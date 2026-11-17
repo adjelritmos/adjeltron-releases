@@ -60,3 +60,5 @@ ATtiny85 e Franzininho · STM32 Blue Pill.
 ## 🐞 Problemas e sugestões
 
 Abra uma [Issue](../../issues) com a versão, o sistema operativo e, se possível, o projeto exportado (`.adjel`).
+
+
