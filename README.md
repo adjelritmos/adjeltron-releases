@@ -9,6 +9,8 @@ programe em **C/C++ (Arduino)** ou **Fogu** e veja tudo a funcionar antes de toc
 
 [**⬇ Descarregar a última versão**](../../releases/latest)
 
+<img src="img/app-3d.png" alt="Simulação 3D do cão robô com física, código e telemetria" width="100%" />
+
 </div>
 
 ---
@@ -42,6 +44,18 @@ basta ter o [Arduino IDE 2](https://www.arduino.cc/en/software) instalado.
 - 📊 **Ferramentas**: Monitor Série, Plotter, osciloscópio e telemetria dos servos
 
 **339 componentes · 13 placas · 111 exemplos · 120+ bibliotecas Arduino**
+
+<img src="img/app-circuito.png" alt="Editor de código e circuito 2D do braço robótico" width="100%" />
+
+## 🤖 Exemplos
+
+| | | |
+|:---:|:---:|:---:|
+| <img src="img/caoRoboAlu.png" width="260" /><br>**Cão robô**: 11 servos, PCA9685, sonar | <img src="img/humanoide.png" width="260" /><br>**Humanoide**: 14 servos, MPU6050, equilíbrio | <img src="img/patoRobo.png" width="260" /><br>**Pato bípede**: 15 servos, ToF |
+| <img src="img/braco6.png" width="260" /><br>**Braço de 6 eixos**: pega e larga um cubo | <img src="img/desenhador.png" width="260" /><br>**Braço SCARA**: escreve "OLA" com caneta | <img src="img/seguidor.png" width="260" /><br>**Seguidor de linha**: 3 sensores IR, L298N |
+
+**Placas:** Arduino Uno, Nano e Mega · ESP32 · Raspberry Pi Pico, Pico W, Pico 2 e Pico 2 W · Nano RP2040 ·
+ATtiny85 e Franzininho · STM32 Blue Pill.
 
 ## 🐞 Problemas e sugestões
 
