@@ -1,0 +1,22 @@
+// Grupo G (sensores): módulos do Velxio/Wokwi e outros sensores comuns que faltavam.
+import bigSoundSensor from './bigSoundSensor.js'
+import smallSoundSensor from './smallSoundSensor.js'
+import touchTTP223 from './touchTTP223.js'
+import soilCapacitive from './soilCapacitive.js'
+import waterLevel from './waterLevel.js'
+import rainSensor from './rainSensor.js'
+import jsnSr04t from './jsnSr04t.js'
+import irObstacle from './irObstacle.js'
+import { lineTracker3, lineTracker5 } from './lineTracker.js'
+import tcs3200 from './tcs3200.js'
+import tcs34725 from './tcs34725.js'
+import bh1750 from './bh1750.js'
+import dht11 from './dht11.js'
+import acs712 from './acs712.js'
+import voltageSensor from './voltageSensor.js'
+import adxl345 from './adxl345.js'
+import { hmc5883l, qmc5883l } from './compass.js'
+import vl53l0x from './vl53l0x.js'
+import apds9960 from './apds9960.js'
+
+export const G_SENSORS = [bigSoundSensor, smallSoundSensor, touchTTP223, soilCapacitive, waterLevel, rainSensor, jsnSr04t, irObstacle, lineTracker3, lineTracker5, tcs3200, tcs34725, bh1750, dht11, acs712, voltageSensor, adxl345, hmc5883l, qmc5883l, vl53l0x, apds9960]

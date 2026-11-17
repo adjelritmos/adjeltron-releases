@@ -1,0 +1,22 @@
+// Grupo G (sensores): interfaces 3D/2D
+import bigSoundSensor from './bigSoundSensor.jsx'
+import smallSoundSensor from './smallSoundSensor.jsx'
+import touchTTP223 from './touchTTP223.jsx'
+import soilCapacitive from './soilCapacitive.jsx'
+import waterLevel from './waterLevel.jsx'
+import rainSensor from './rainSensor.jsx'
+import jsnSr04t from './jsnSr04t.jsx'
+import irObstacle from './irObstacle.jsx'
+import { lineTracker3, lineTracker5 } from './lineTracker.jsx'
+import tcs3200 from './tcs3200.jsx'
+import tcs34725 from './tcs34725.jsx'
+import bh1750 from './bh1750.jsx'
+import dht11 from './dht11.jsx'
+import acs712 from './acs712.jsx'
+import voltageSensor from './voltageSensor.jsx'
+import adxl345 from './adxl345.jsx'
+import { hmc5883l, qmc5883l } from './compass.jsx'
+import vl53l0x from './vl53l0x.jsx'
+import apds9960 from './apds9960.jsx'
+
+export const UI_G_SENSORS = [bigSoundSensor, smallSoundSensor, touchTTP223, soilCapacitive, waterLevel, rainSensor, jsnSr04t, irObstacle, lineTracker3, lineTracker5, tcs3200, tcs34725, bh1750, dht11, acs712, voltageSensor, adxl345, hmc5883l, qmc5883l, vl53l0x, apds9960]

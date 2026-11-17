@@ -1,0 +1,22 @@
+// Grupo D de interfaces 3D/2D (um import por componente)
+import lcd2004 from './lcd2004.jsx'
+import ili9341 from './ili9341.jsx'
+import ds1307 from './ds1307.jsx'
+import ds3231 from './ds3231.jsx'
+import slidePot from './slidePot.jsx'
+import dipSwitch8 from './dipSwitch8.jsx'
+import irReceiver from './irReceiver.jsx'
+import irRemote from './irRemote.jsx'
+import hx711 from './hx711.jsx'
+import a4988 from './a4988.jsx'
+import nema17 from './nema17.jsx'
+import hc595 from './hc595.jsx'
+import ds18b20 from './ds18b20.jsx'
+import bmp280 from './bmp280.jsx'
+import sevenseg4 from './sevenseg4.jsx'
+import keypad3x4 from './keypad3x4.jsx'
+import microSD from './microSD.jsx'
+import heartbeat from './heartbeat.jsx'
+import hall from './hall.jsx'
+
+export const UI_D = [lcd2004, ili9341, ds1307, ds3231, slidePot, dipSwitch8, irReceiver, irRemote, hx711, a4988, nema17, hc595, ds18b20, bmp280, sevenseg4, keypad3x4, microSD, heartbeat, hall]

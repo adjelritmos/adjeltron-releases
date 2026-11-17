@@ -1,0 +1,32 @@
+# dependências (instaladas com `bun install`)
+node_modules/
+
+# builds
+/frontend/dist/
+/desktop/dist/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/schemas/
+/desktop/dist/
+frontend/node_modules/.vite/
+
+# backend antigo: projetos guardados + miniaturas (dados locais) e cache/builds do arduino-cli
+backend/data/
+backend/.arduino/
+
+
+# variáveis de ambiente e ligações locais
+.env
+.env.*
+!.env.example
+.vercel/
+
+# sistema / editores
+.DS_Store
+*.log
+.vscode/
+.idea/
+
+# pacote do backend para a Vercel (backend/scripts/vercel-bundle.mjs)
+backend/.vercel-out/
+frontend/.vercel-out/
+

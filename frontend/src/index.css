@@ -1,0 +1,21 @@
+@import "tailwindcss" source("../");  /* procura classes em frontend/ (também quando o build é o do desktop) */
+@plugin './hero.js';
+@source '../node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}';
+@custom-variant dark (&:is(.dark *));
+
+html, body, #threejs { margin: 0; height: 100%; background: #0a0a0a; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+
+@layer components {
+  .panel-label { @apply text-[10px] font-semibold tracking-[0.12em] uppercase text-neutral-500; }
+}
+
+.pin-tip { background: rgba(0,0,0,.92); border: 1px solid #fff; color: #fff; padding: 3px 7px; border-radius: 6px; white-space: nowrap; font: 600 12px system-ui; display: flex; flex-direction: column; align-items: center; transform: translateY(-14px); }
+.pin-tip span { font-weight: 400; font-size: 10px; color: #a3a3a3; }
+.cm-editor { height: 100%; }
+.cm-editor .cm-gutters { background: #0a0a0a !important; border-right: 1px solid #ffffff14 !important; }
+.cm-editor, .cm-editor .cm-scroller { background: #0d0d0d !important; }
+.cm-editor .cm-activeLine { background: #ffffff08 !important; }
+.cm-editor .cm-activeLineGutter { background: #ffffff0d !important; }
+
+/* entrada das imagens da montra da página inicial (HeroGallery) */
+@keyframes heroIn { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }

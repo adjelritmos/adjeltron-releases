@@ -1,0 +1,414 @@
+[
+  {
+    "id": "robolab3d0tab001",
+    "type": "tab",
+    "label": "adjeltron (MQTT)",
+    "disabled": false,
+    "info": "Fluxo de exemplo do adjeltron: fala com os ESP32 simulados pelo broker MQTT do adjeltron (mqtt://localhost:1883).\n\nNo adjeltron abra o exemplo \"ESP32 MQTT: LED e potenciómetro pelo painel\" (iotMqttLed) ou \"ESP32 MQTT: estação meteorológica JSON\" (iotMqttDht) e carregue em Simular. Abra o separador Debug (barra lateral direita) para ver as mensagens."
+  },
+  {
+    "id": "robolab3d0000001",
+    "type": "comment",
+    "z": "robolab3d0tab001",
+    "name": "1) No adjeltron: abra o exemplo iotMqttLed e carregue em Simular",
+    "info": "O sketch usa client.setServer(\"localhost\", 1883): é o broker do adjeltron, o mesmo deste fluxo.\nSe o adjeltron disser que a porta 1883 estava ocupada, edite o nó de configuração \"RoboLab\" e mude a porta (ex.: 1884).",
+    "x": 260,
+    "y": 40,
+    "wires": []
+  },
+  {
+    "id": "robolab3d0000002",
+    "type": "debug",
+    "z": "robolab3d0tab001",
+    "name": "tudo de robolab/esp32",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": true,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "payload",
+    "statusType": "auto",
+    "x": 640,
+    "y": 100,
+    "wires": []
+  },
+  {
+    "id": "robolab3d0000003",
+    "type": "mqtt in",
+    "z": "robolab3d0tab001",
+    "name": "ESP32: tudo (robolab/esp32/#)",
+    "topic": "robolab/esp32/#",
+    "qos": "0",
+    "datatype": "auto-detect",
+    "broker": "robolab3dbroker1",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 190,
+    "y": 100,
+    "wires": [
+      [
+        "robolab3d0000002"
+      ]
+    ]
+  },
+  {
+    "id": "robolab3d0000004",
+    "type": "debug",
+    "z": "robolab3d0tab001",
+    "name": "potenciómetro (%)",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": true,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "payload",
+    "statusType": "auto",
+    "x": 640,
+    "y": 160,
+    "wires": []
+  },
+  {
+    "id": "robolab3d0000005",
+    "type": "function",
+    "z": "robolab3d0tab001",
+    "name": "texto -> número",
+    "func": "msg.payload = Number(msg.payload);\nnode.status({ text: msg.payload + \" %\" });\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 420,
+    "y": 160,
+    "wires": [
+      [
+        "robolab3d0000004"
+      ]
+    ]
+  },
+  {
+    "id": "robolab3d0000006",
+    "type": "mqtt in",
+    "z": "robolab3d0tab001",
+    "name": "potenciómetro",
+    "topic": "robolab/esp32/pot",
+    "qos": "0",
+    "datatype": "utf8",
+    "broker": "robolab3dbroker1",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 170,
+    "y": 160,
+    "wires": [
+      [
+        "robolab3d0000005"
+      ]
+    ]
+  },
+  {
+    "id": "robolab3d0000007",
+    "type": "debug",
+    "z": "robolab3d0tab001",
+    "name": "estado (online/offline)",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": true,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "payload",
+    "statusType": "auto",
+    "x": 650,
+    "y": 220,
+    "wires": []
+  },
+  {
+    "id": "robolab3d0000008",
+    "type": "mqtt in",
+    "z": "robolab3d0tab001",
+    "name": "estado do ESP32 (testamento)",
+    "topic": "robolab/esp32/estado",
+    "qos": "0",
+    "datatype": "utf8",
+    "broker": "robolab3dbroker1",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 190,
+    "y": 220,
+    "wires": [
+      [
+        "robolab3d0000007"
+      ]
+    ]
+  },
+  {
+    "id": "robolab3d0000009",
+    "type": "comment",
+    "z": "robolab3d0tab001",
+    "name": "2) Clique nos botões para ligar/desligar o LED do ESP32 simulado",
+    "info": "",
+    "x": 290,
+    "y": 290,
+    "wires": []
+  },
+  {
+    "id": "robolab3d0000010",
+    "type": "mqtt out",
+    "z": "robolab3d0tab001",
+    "name": "adjeltron: publicar",
+    "topic": "",
+    "qos": "0",
+    "retain": "false",
+    "respTopic": "",
+    "contentType": "",
+    "userProps": "",
+    "correl": "",
+    "expiry": "",
+    "broker": "robolab3dbroker1",
+    "x": 520,
+    "y": 360,
+    "wires": []
+  },
+  {
+    "id": "robolab3d0000011",
+    "type": "inject",
+    "z": "robolab3d0tab001",
+    "name": "LED ligado (1)",
+    "props": [
+      {
+        "p": "payload"
+      },
+      {
+        "p": "topic",
+        "vt": "str"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "robolab/esp32/led",
+    "payload": "1",
+    "payloadType": "str",
+    "x": 160,
+    "y": 340,
+    "wires": [
+      [
+        "robolab3d0000010"
+      ]
+    ]
+  },
+  {
+    "id": "robolab3d0000012",
+    "type": "inject",
+    "z": "robolab3d0tab001",
+    "name": "LED desligado (0)",
+    "props": [
+      {
+        "p": "payload"
+      },
+      {
+        "p": "topic",
+        "vt": "str"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "robolab/esp32/led",
+    "payload": "0",
+    "payloadType": "str",
+    "x": 170,
+    "y": 380,
+    "wires": [
+      [
+        "robolab3d0000010"
+      ]
+    ]
+  },
+  {
+    "id": "robolab3d0000013",
+    "type": "comment",
+    "z": "robolab3d0tab001",
+    "name": "3) Exemplo iotMqttDht: estação meteorológica JSON",
+    "info": "",
+    "x": 240,
+    "y": 450,
+    "wires": []
+  },
+  {
+    "id": "robolab3d0000014",
+    "type": "debug",
+    "z": "robolab3d0tab001",
+    "name": "temperatura",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": true,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "payload",
+    "statusType": "auto",
+    "x": 660,
+    "y": 510,
+    "wires": []
+  },
+  {
+    "id": "robolab3d0000015",
+    "type": "function",
+    "z": "robolab3d0tab001",
+    "name": "t / h",
+    "func": "node.status({ text: msg.payload.t + \" °C  \" + msg.payload.h + \" %\" });\nmsg.payload = msg.payload.t;\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 440,
+    "y": 510,
+    "wires": [
+      [
+        "robolab3d0000014"
+      ]
+    ]
+  },
+  {
+    "id": "robolab3d0000016",
+    "type": "mqtt in",
+    "z": "robolab3d0tab001",
+    "name": "estação: dados JSON",
+    "topic": "robolab/estacao/dados",
+    "qos": "0",
+    "datatype": "json",
+    "broker": "robolab3dbroker1",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 180,
+    "y": 510,
+    "wires": [
+      [
+        "robolab3d0000015"
+      ]
+    ]
+  },
+  {
+    "id": "robolab3d0000017",
+    "type": "mqtt out",
+    "z": "robolab3d0tab001",
+    "name": "adjeltron: comando",
+    "topic": "",
+    "qos": "0",
+    "retain": "false",
+    "respTopic": "",
+    "contentType": "",
+    "userProps": "",
+    "correl": "",
+    "expiry": "",
+    "broker": "robolab3dbroker1",
+    "x": 540,
+    "y": 590,
+    "wires": []
+  },
+  {
+    "id": "robolab3d0000018",
+    "type": "inject",
+    "z": "robolab3d0tab001",
+    "name": "intervalo 1 s",
+    "props": [
+      {
+        "p": "payload"
+      },
+      {
+        "p": "topic",
+        "vt": "str"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "robolab/estacao/cmd",
+    "payload": "{\"intervalo\":1000}",
+    "payloadType": "json",
+    "x": 160,
+    "y": 570,
+    "wires": [
+      [
+        "robolab3d0000017"
+      ]
+    ]
+  },
+  {
+    "id": "robolab3d0000019",
+    "type": "inject",
+    "z": "robolab3d0tab001",
+    "name": "intervalo 5 s",
+    "props": [
+      {
+        "p": "payload"
+      },
+      {
+        "p": "topic",
+        "vt": "str"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "robolab/estacao/cmd",
+    "payload": "{\"intervalo\":5000}",
+    "payloadType": "json",
+    "x": 160,
+    "y": 610,
+    "wires": [
+      [
+        "robolab3d0000017"
+      ]
+    ]
+  },
+  {
+    "id": "robolab3dbroker1",
+    "type": "mqtt-broker",
+    "name": "adjeltron (localhost:1883)",
+    "broker": "localhost",
+    "port": "1883",
+    "clientid": "",
+    "autoConnect": true,
+    "usetls": false,
+    "protocolVersion": "4",
+    "keepalive": "60",
+    "cleansession": true,
+    "autoUnsubscribe": true,
+    "birthTopic": "nodered/estado",
+    "birthQos": "0",
+    "birthRetain": "true",
+    "birthPayload": "online",
+    "birthMsg": {},
+    "closeTopic": "nodered/estado",
+    "closeQos": "0",
+    "closeRetain": "true",
+    "closePayload": "offline",
+    "closeMsg": {},
+    "willTopic": "nodered/estado",
+    "willQos": "0",
+    "willRetain": "true",
+    "willPayload": "offline",
+    "willMsg": {},
+    "userProps": "",
+    "sessionExpiry": ""
+  }
+]

@@ -1,0 +1,22 @@
+// Grupo D de comportamentos (um import por componente)
+import lcd2004 from './lcd2004.js'
+import ili9341 from './ili9341.js'
+import ds1307 from './ds1307.js'
+import ds3231 from './ds3231.js'
+import slidePot from './slidePot.js'
+import dipSwitch8 from './dipSwitch8.js'
+import irReceiver from './irReceiver.js'
+import irRemote from './irRemote.js'
+import hx711 from './hx711.js'
+import a4988 from './a4988.js'
+import nema17 from './nema17.js'
+import hc595 from './hc595.js'
+import ds18b20 from './ds18b20.js'
+import bmp280 from './bmp280.js'
+import sevenseg4 from './sevenseg4.js'
+import keypad3x4 from './keypad3x4.js'
+import microSD from './microSD.js'
+import heartbeat from './heartbeat.js'
+import hall from './hall.js'
+
+export const GROUP_D = [lcd2004, ili9341, ds1307, ds3231, slidePot, dipSwitch8, irReceiver, irRemote, hx711, a4988, nema17, hc595, ds18b20, bmp280, sevenseg4, keypad3x4, microSD, heartbeat, hall]
