@@ -2,6 +2,7 @@
 // automática da linguagem de um código colado e o programa inicial para as placas.
 import { StreamLanguage } from '@codemirror/language'
 import { m as L } from '../../../../shared/i18n.js' // L(pt, en): textos no idioma da interface
+import { DRIVERS } from './drivers.js'
 
 // ---------------------------------------------------------------- realce
 // os nomes dos tokens são etiquetas do Lezer (keyword, controlKeyword, variableName.function…)
@@ -9,7 +10,7 @@ const CONTROL = /^(if|else|while|for|in|loop|break|continue|return)\b/
 const DEFINE = /^(let|const|fn)\b/
 const MODULE = /^(import|from|export)\b/
 const NOT_MCU = /^(match|struct|interface|embed|fg|select|case|new|this|nil)\b/ // existem no Fogu mas não na mcu
-const TYPES = /^(int|int8|int16|int32|uint|uint8|uint16|uint32|byte|rune|bool|duration|str|char|bytes|pin|adc|pwm|i2c)\b/
+const TYPES = /^(int|int8|int16|int32|uint|uint8|uint16|uint32|byte|rune|bool|duration|str|char|bytes|pin|adc|pwm|i2c|spi)\b/
 const BUILTINS = /^(print|len|str|int|char|bool|typeof|panic|int8|int16|int32|uint8|uint16|uint32|byte)\b(?=\s*\()/
 
 export const foguLanguage = StreamLanguage.define({
@@ -167,6 +168,7 @@ const METHODS = () => ({
 const KEYWORDS = ['let', 'const', 'fn', 'if', 'else', 'while', 'for', 'in', 'loop', 'break', 'continue', 'return', 'true', 'false', 'import'].map((k) => ({ label: k, type: 'keyword' }))
 const SNIPPETS = () => [
   { label: 'import mcu', type: 'text', detail: L('biblioteca', 'library'), apply: 'import mcu from "mcu"\n' },
+  ...Object.keys(DRIVERS).map((d) => ({ label: `import ${d}`, type: 'text', detail: L('driver da mcu', 'mcu driver'), apply: `import ${d} from "mcu/drivers/${d}"\n` })),
   { label: 'loop', type: 'text', detail: L('ciclo infinito', 'infinite loop'), apply: 'loop {\n    \n}' },
   { label: 'fn', type: 'text', detail: L('função', 'function'), apply: 'fn nome() {\n    \n}' },
   { label: 'for', type: 'text', detail: 'for i in 0..10', apply: 'for i in 0..10 {\n    \n}' },
@@ -202,6 +204,16 @@ export function foguCompletions(ctx) {
     if (obj === 'mcu.serial') return { from, options: SERIAL_API(), validFor: /^\w*$/ }
     // mcu.led().out…  (cadeia sobre um pino)
     if (/^mcu$/.test(parts[0]) && parts.length === 1) return { from, options: MCU_API(), validFor: /^\w*$/ }
+      // driver importado: import dht from "mcu/drivers/dht" → dht.read(), dht.DHT22…
+    if (parts.length === 1) {
+      const dm = doc.match(new RegExp(`\\bimport\\s+${parts[0]}\\s+from\\s+["']mcu/drivers/(\\w+)["']`))
+      const D = dm && DRIVERS[dm[1]]
+      if (D) {
+        const sig = (f) => `(${f.p.join(', ')})${f.r !== 'void' ? ` → ${f.r}` : ''}`
+        const options = [...Object.entries(D.fns).map(([n, f]) => fn(n, sig(f), '', f.p.length ? `${n}()` : undefined)), ...Object.entries(D.consts).map(([n, v]) => ({ label: n, type: 'constant', detail: `= ${v}` }))]
+        return { from, options, validFor: /^\w*$/ }
+      }
+    }
     const t = parts.length === 1 ? varType(doc, parts[0]) : null
     const methods = METHODS()
     if (t && methods[t]) return { from, options: methods[t], validFor: /^\w*$/ }

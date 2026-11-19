@@ -182,6 +182,27 @@ const SCEN = {
       return ip && t.length && fb.length && new Set(fb).size > 1 ? `Wi-Fi ${ip}; leituras T=${t.join(', ')} C; OLED ${new Set(fb).size} imagens` : null
     },
   },
+  // câmara (esp_camera.h): até aos 2,5 s a imagem é a sintética (sem vista 3D); depois chega um
+  // frame como o que o browser envia (mensagem 'camFrame' → input.frame) com uma faixa escura em x = 116–123 (de 160)
+  camaraEsp32: {
+    inputs: [
+      at(2.5, 9, (I) => {
+        const w = 320
+        const h = 240
+        const rgb = new Uint8Array(w * h * 3).fill(210)
+        for (let y = 0; y < h; y++) for (let x = 232; x < 248; x++) rgb.fill(20, (y * w + x) * 3, (y * w + x) * 3 + 3)
+        I.cam = { ...I.cam, frame: { w, h, rgb } }
+      }),
+    ],
+    check: (S) => {
+      const L = [...S.serial.matchAll(/brilho medio: (\d+)\s+coluna mais escura: (\d+)/g)].map((m) => [+m[1], +m[2]])
+      const syn = L.filter((_, i) => i < 3)
+      const real = L.at(-1)
+      return /Camara pronta/.test(S.serial) && syn.length && syn.every(([b]) => b > 20 && b < 240) && real && real[1] >= 115 && real[1] <= 123 && S.samples.some((s) => s.live.cam?.cam?.on)
+        ? `sintética: brilho ${syn[0][0]}; frame do browser: brilho ${real[0]}, coluna escura ${real[1]} (esperado 116–123)`
+        : null
+    },
+  },
   ventoinha: {
     inputs: [at(3.0, 9, (I) => (I.pot = { value: 0 }))],
     check: (S) => {

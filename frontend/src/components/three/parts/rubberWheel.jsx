@@ -1,5 +1,9 @@
-// Roda com pneu de borracha: aro de plástico com raios e pneu com piso (eixo +y).
-import { Cyl, geo, mat, THREE } from '../kit.jsx'
+// Roda com pneu de borracha (eixo +y), como as rodas dos kits de robôs (motor TT, 65 mm):
+// pneu de borracha com os ombros boleados e piso de tacos em V moldados, jante de plástico com
+// 6 raios, aro com rebordo, cubo com o furo em duplo D do veio do motor TT e parafuso de
+// fixação no centro.
+import { Cyl, geo, mat, mergedGeo, THREE } from '../kit.jsx'
+import { aroundY } from './_mechKit.jsx'
 import { wheelDims } from '@shared/parts/rubberWheel.js'
 import { DiscWheel } from './_discWheel.jsx'
 import { extrudeXZ } from './_mdfKit.jsx'
@@ -22,6 +26,36 @@ function tyreGeo(r, w) {
     const g = new THREE.LatheGeometry(pts, 48)
     g.computeVertexNormals()
     return g
+  })
+}
+
+// tacos do piso: n pares de blocos em V à volta do pneu (ângulo `tilt`, altura h·w, largura tw)
+function treadGeo(r, w, n, tilt, h, tw, off) {
+  return mergedGeo(`rwTread${r},${w},${n},${tilt},${h},${tw},${off}`, () => {
+    const b = geo('mkUnitBox', () => new THREE.BoxGeometry(1, 1, 1))
+    const out = []
+    for (let i = 0; i < n; i++)
+      for (const sd of [-1, 1]) {
+        const [p, q] = aroundY(-(i / n) * Math.PI * 2, [r - 0.03, w / 2 + sd * w * off, 0], [sd * tilt, 0, 0])
+        out.push([b, p, q, [0.1, w * h, tw]])
+      }
+    return out
+  })
+}
+// raios da jante: placa radial com a aba (perfil em T) virada para fora
+function spokeGeo(r, w, n) {
+  return mergedGeo(`rwSpokes${r},${w},${n}`, () => {
+    const b = geo('mkUnitBox', () => new THREE.BoxGeometry(1, 1, 1))
+    const out = []
+    for (let i = 0; i < n; i++) {
+      const a = -(i / n) * Math.PI * 2
+      const L = r * 0.64 - 0.5
+      const [p, q] = aroundY(a, [0.5 + L / 2, w * 0.62, 0])
+      out.push([b, p, q, [L, w * 0.42, 0.14]])
+      const [p2, q2] = aroundY(a, [0.5 + L / 2, w * 0.8, 0])
+      out.push([b, p2, q2, [L, 0.08, 0.32]])
+    }
+    return out
   })
 }
 
@@ -54,16 +88,8 @@ function ToyWheel({ r, w, rim }) {
   return (
     <group>
       <mesh geometry={tyreGeo(r, w)} material={mat('#1c1c1c', 0, 0.92, { side: THREE.DoubleSide })} castShadow receiveShadow />
-      {/* piso: blocos em V (como os pneus de brinquedo) */}
-      {Array.from({ length: 36 }, (_, i) => {
-        const a = (i / 36) * Math.PI * 2
-        return [-1, 1].map((sd) => (
-          <mesh key={`${i}${sd}`} position={[Math.cos(a) * (r - 0.03), w / 2 + sd * w * 0.2, Math.sin(a) * (r - 0.03)]} rotation={[sd * 0.5, -a, 0]}>
-            <boxGeometry args={[0.1, w * 0.32, 0.2]} />
-            <meshStandardMaterial color="#141414" roughness={0.95} />
-          </mesh>
-        ))
-      })}
+      {/* piso: blocos em V (como os pneus de brinquedo), numa só malha */}
+      <mesh geometry={treadGeo(r, w, 36, 0.5, 0.32, 0.2, 0.2)} material={mat('#141414', 0, 0.95)} castShadow />
       {/* aro interior e jante de raios curvos na face de fora */}
       {/* aro (casca) e fundo escuro recuado: vê-se através das janelas da jante */}
       <mesh geometry={geo(`toyRimShell${R},${w}`, () => new THREE.CylinderGeometry(R, R, w * 0.9, 40, 1, true))} position={[0, w / 2, 0]} material={mat(rim, 0, 0.45, { side: THREE.DoubleSide })} />
@@ -84,29 +110,40 @@ function Model({ part }) {
   return (
     <group>
       <mesh geometry={tyreGeo(r, w)} material={mat('#1c1c1c', 0, 0.92, { side: THREE.DoubleSide })} castShadow receiveShadow />
-      {/* tacos do piso */}
-      {Array.from({ length: 28 }, (_, i) => {
-        const a = (i / 28) * Math.PI * 2
-        return (
-          <mesh key={i} position={[Math.cos(a) * (r - 0.03), w / 2, Math.sin(a) * (r - 0.03)]} rotation={[0, -a, 0]}>
-            <boxGeometry args={[0.1, w * 0.7, 0.25]} />
-            <meshStandardMaterial color="#141414" roughness={0.95} />
-          </mesh>
-        )
-      })}
-      {/* aro */}
-      <Cyl r={r * 0.72} h={w * 0.55} pos={[0, w / 2, 0]} color={rim} rough={0.5} seg={36} />
-      <Cyl r={r * 0.62} h={w * 0.58} pos={[0, w / 2, 0]} color="#111" rough={0.6} seg={36} />
-      {Array.from({ length: spokes }, (_, i) => (
-        <group key={`s${i}`} position={[0, w * 0.75, 0]} rotation={[0, (i / spokes) * Math.PI * 2, 0]}>
-          <mesh position={[r * 0.36, 0, 0]}>
-            <boxGeometry args={[r * 0.6, w * 0.25, 0.25]} />
-            <meshStandardMaterial color={rim} roughness={0.5} />
-          </mesh>
-        </group>
-      ))}
-      <Cyl r={0.55} h={w} pos={[0, w / 2, 0]} color={rim} rough={0.5} seg={20} />
-      <Cyl r={0.2} h={w + 0.02} pos={[0, w / 2, 0]} color="#0d0d0d" seg={12} />
+      {/* tacos do piso em V, numa só malha */}
+      <mesh geometry={treadGeo(r, w, 28, 0.42, 0.36, 0.25, 0.19)} material={mat('#141414', 0, 0.95)} castShadow />
+      {/* aro com rebordo (onde assenta o pneu) e fundo escuro recuado entre os raios */}
+      <mesh geometry={geo(`rwRim${r},${w}`, () => {
+        const R = r * 0.72
+        const p = [[r * 0.64, w * 0.2], [R, w * 0.2], [R + 0.04, w * 0.22], [R + 0.04, w * 0.27], [R, w * 0.29], [R, w * 0.71], [R + 0.04, w * 0.73], [R + 0.04, w * 0.78], [R, w * 0.8], [r * 0.64, w * 0.8], [r * 0.64, w * 0.2]].map(([a, b]) => new THREE.Vector2(a, b))
+        return new THREE.LatheGeometry(p, 40)
+      })} material={mat(rim, 0, 0.45)} castShadow receiveShadow />
+      <Cyl r={r * 0.64} h={0.05} pos={[0, w * 0.35, 0]} color="#111" rough={0.6} seg={36} />
+      {/* raios (perfil em T, alargam junto ao aro) */}
+      <mesh geometry={spokeGeo(r, w, spokes)} material={mat(rim, 0, 0.45)} castShadow receiveShadow />
+      {/* cubo com o furo em duplo D e o parafuso de fixação */}
+      <mesh position={[0, w / 2, 0]} geometry={geo(`rwHub${w}`, () => {
+        const p = [[0.3, -w / 2], [0.55, -w / 2], [0.58, -w / 2 + 0.04], [0.58, w / 2 - 0.04], [0.55, w / 2], [0.3, w / 2], [0.3, -w / 2]].map(([a, b]) => new THREE.Vector2(a, b))
+        return new THREE.LatheGeometry(p, 28)
+      })} material={mat(rim, 0, 0.45)} castShadow />
+      <mesh position={[0, w / 2, 0]} geometry={geo(`rwBoreDD${w}`, () => {
+        // furo em duplo D (5,4 × 3,7 mm) do veio do motor TT
+        const sh = new THREE.Shape()
+        sh.absarc(0, 0, 0.3, 0, Math.PI * 2, false)
+        const h = new THREE.Path()
+        const a = Math.acos(0.185 / 0.27)
+        h.absarc(0, 0, 0.27, a, Math.PI - a, false)
+        h.absarc(0, 0, 0.27, Math.PI + a, 2 * Math.PI - a, false)
+        h.closePath()
+        sh.holes.push(h)
+        const g = new THREE.ExtrudeGeometry(sh, { depth: w * 0.98, bevelEnabled: false, curveSegments: 10 })
+        g.translate(0, 0, -w * 0.49)
+        g.rotateX(-Math.PI / 2)
+        return g
+      })} material={mat(rim, 0, 0.5)} />
+      <mesh position={[0, w * 0.98, 0]} geometry={geo('rwScrew', () => new THREE.SphereGeometry(0.2, 14, 6, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.45, 1))} material={mat('#c9ced2', 0.9, 0.3)} />
+      <mesh position={[0, w * 0.98 + 0.07, 0]} geometry={geo('rwScrewX', () => new THREE.BoxGeometry(0.24, 0.04, 0.05))} material={mat('#3a3d40', 0.5, 0.5)} />
+      <mesh position={[0, w * 0.98 + 0.07, 0]} rotation={[0, Math.PI / 2, 0]} geometry={geo('rwScrewX', () => new THREE.BoxGeometry(0.24, 0.04, 0.05))} material={mat('#3a3d40', 0.5, 0.5)} />
     </group>
   )
 }

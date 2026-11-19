@@ -1,8 +1,12 @@
-// Ar condicionado (split de parede): corpo boleado, grelha de aspiração em cima, alheta
-// motorizada em baixo, visor LED com a temperatura da sala e jato de ar frio (partículas azuis)
-// quando ligado. Referencial: x ao longo da parede, y para fora da parede, z para cima.
-import { Box, RBox, Cyl, Halo, geo, mat, liveOf, useFrame, useMemo, useRef, THREE } from '../kit.jsx'
+// Ar condicionado (unidade interior "split" de parede, como as de 9000 BTU): corpo de ABS com o
+// perfil real (costas planas na placa de fixação, topo plano com a grelha de aspiração em
+// rasgos finos, frente lisa e brilhante, canto de baixo boleado), boca de saída em baixo com as
+// lâminas verticais e a alheta motorizada de perfil curvo, visor fumado com a temperatura da
+// sala, LEDs de funcionamento/temporizador e o jato de ar frio (partículas azuis) quando
+// ligado. Referencial: x ao longo da parede, y para fora da parede, z para cima.
+import { Box, RBox, Cyl, Halo, SilkText, geo, mat, mergedGeo, liveOf, useFrame, useMemo, useRef, THREE } from '../kit.jsx'
 import { AC } from '@shared/parts/arCondicionado.js'
+import { Bornes, extrudeXGeo, roundShape } from './_casaKit.jsx'
 
 const N_AIR = 18
 
@@ -70,36 +74,73 @@ function Model({ part }) {
   })
   const airMats = useMemo(() => Array.from({ length: N_AIR }, () => new THREE.MeshBasicMaterial({ color: '#9fdcff', transparent: true, opacity: 0, depthWrite: false })), [])
   const puff = geo('acPuff', () => new THREE.SphereGeometry(0.18, 10, 8))
+  // perfil do corpo (forma: x = z para cima, y = para fora da parede), extrudido ao longo de x
+  const shell = extrudeXGeo(
+    `acShell${L},${H},${D}`,
+    () => roundShape([[H / 2, 0.02, 0.12], [H / 2, D, 0.42], [-H / 2 + 0.55, D, 0.3], [-H / 2, D - 0.3, 0.3], [-H / 2, 0.02, 0.12]]),
+    L - 0.02,
+    0,
+    10,
+  )
+  // grelha de aspiração no topo: rasgos finos ao longo de y
+  const intake = mergedGeo(`acIntake${L},${H},${D}`, () => {
+    const b = geo('acUnit', () => new THREE.BoxGeometry(1, 1, 1))
+    const out = []
+    const n = Math.floor((L - 1.0) / 0.13)
+    for (let i = 0; i < n; i++) out.push([b, [-L / 2 + 0.5 + (i + 0.5) * ((L - 1.0) / n), 0.3 + (D - 0.85) / 2, H / 2 + 0.002], [0, 0, 0], [0.06, D - 0.85, 0.008]])
+    return out
+  })
+  // lâminas verticais (direção do ar para os lados) dentro da boca de saída
+  const vanes = mergedGeo(`acVanes${L},${H},${D}`, () => {
+    const b = geo('acUnit', () => new THREE.BoxGeometry(1, 1, 1))
+    const out = []
+    const n = 22
+    for (let i = 0; i < n; i++) out.push([b, [-L / 2 + 0.6 + (i + 0.5) * ((L - 1.2) / n), 1.05, -H / 2 - 0.035], [0, 0, 0.25], [0.03, 1.3, 0.06]])
+    return out
+  })
+  const flapGeo = extrudeXGeo(
+    `acFlap${L}`,
+    () => roundShape([[-0.01, 0.0], [-0.09, -0.2], [-0.12, -0.45], [-0.08, -0.75], [-0.02, -0.74], [-0.05, -0.45], [-0.03, -0.22], [0.02, -0.02]], 0.03),
+    L - 0.9,
+  )
   return (
     <group>
-      {/* placa de fixação e corpo */}
-      <Box size={[L - 0.4, 0.12, H - 0.3]} pos={[0, 0.06, 0]} color="#d8dad6" />
-      <RBox size={[L, D - 0.1, H]} r={0.35} pos={[0, 0.05 + (D - 0.1) / 2, 0]} color={body} rough={0.4} />
-      {/* painel frontal liso, ligeiramente saliente */}
-      <RBox size={[L - 0.3, 0.12, H - 0.75]} r={0.05} pos={[0, D - 0.02, 0.18]} color={body} rough={0.25} />
-      {/* grelha de aspiração em cima */}
-      {Array.from({ length: 14 }, (_, i) => (
-        <Box key={i} size={[0.12, D - 0.7, 0.05]} pos={[-L / 2 + 0.75 + i * ((L - 1.5) / 13), 0.35 + (D - 0.7) / 2, H / 2 - 0.005]} color="#9ea4a6" />
-      ))}
-      {/* boca de saída em baixo (escura) */}
-      <Box size={[L - 0.8, D - 0.6, 0.06]} pos={[0, 0.3 + (D - 0.6) / 2, -H / 2 - 0.005]} color="#2a2f33" />
-      {/* alheta articulada no bordo da frente da boca */}
+      {/* placa de fixação (chapa) e corpo */}
+      <Box size={[L - 0.4, 0.06, H - 0.3]} pos={[0, 0.03, 0]} color="#c9ccc8" metal={0.4} rough={0.5} />
+      <mesh geometry={shell} material={mat(body, 0, 0.32)} castShadow receiveShadow />
+      {/* painel frontal liso e brilhante, ligeiramente saliente, com a junta à volta */}
+      <RBox size={[L - 0.3, 0.07, H - 1.0]} r={0.03} pos={[0, D + 0.03, 0.12]} color={body} rough={0.12} />
+      <Box size={[L - 0.26, 0.02, H - 0.96]} pos={[0, D + 0.005, 0.12]} color="#bfc2be" rough={0.6} />
+      <SilkText text="INVERTER" pos={[0, D + 0.068, -0.45]} w={1.3} d={0.2} rotY={Math.PI} color="#9aa0a4" font="bold 44px Arial" px={[320, 64]} />
+      {/* grelha de aspiração em cima (por baixo, o filtro escuro) */}
+      <Box size={[L - 0.9, D - 0.8, 0.01]} pos={[0, 0.3 + (D - 0.85) / 2, H / 2 - 0.002]} color="#5b6164" rough={0.8} />
+      <mesh geometry={intake} material={mat('#2b2f33', 0, 0.85)} />
+      {/* boca de saída em baixo (escura) com as lâminas verticais */}
+      <Box size={[L - 0.8, D - 0.6, 0.06]} pos={[0, 0.3 + (D - 0.6) / 2, -H / 2 - 0.005]} color="#22272b" rough={0.8} />
+      <mesh geometry={vanes} material={mat('#3a4045', 0, 0.6)} />
+      {/* alheta articulada no bordo da frente da boca (perfil curvo) */}
       <group ref={flap} position={[0, D - 0.15, -H / 2 + 0.02]}>
-        <Box size={[L - 0.9, 0.75, 0.08]} pos={[0, -0.375, -0.04]} color={body} rough={0.35} />
+        <mesh geometry={flapGeo} material={mat(body, 0, 0.3)} castShadow />
       </group>
-      {/* visor da temperatura e LED de funcionamento */}
-      <mesh position={[L / 2 - 1.3, D + 0.055, -0.15]} rotation={[Math.PI / 2, Math.PI, 0]}>
+      {/* visor fumado da temperatura e LEDs (funcionamento, temporizador, sleep) */}
+      <RBox size={[1.4, 0.03, 0.75]} r={0.012} pos={[L / 2 - 1.15, D + 0.06, -0.15]} color="#0c1215" rough={0.1} />
+      <mesh position={[L / 2 - 1.3, D + 0.077, -0.15]} rotation={[Math.PI / 2, Math.PI, 0]}>
         <planeGeometry args={[1.1, 0.55]} />
         <meshBasicMaterial ref={dispMat} map={disp.t} toneMapped={false} />
       </mesh>
-      <mesh position={[L / 2 - 0.55, D + 0.06, -0.15]}>
-        <sphereGeometry args={[0.07, 10, 8]} />
+      <mesh position={[L / 2 - 0.55, D + 0.075, -0.05]}>
+        <sphereGeometry args={[0.05, 10, 6]} />
         <meshStandardMaterial ref={led} color="#2f7d32" emissive="#45ff6a" emissiveIntensity={0} toneMapped={false} />
       </mesh>
-      <Halo pos={[L / 2 - 0.55, D + 0.15, -0.15]} size={0.5} color="#45ff6a" read={() => (liveOf(part.id)?.on ? 0.7 : 0)} />
-      {/* tubo e cabo para a unidade exterior, a sair pelo lado −x */}
-      <Cyl r={0.18} h={0.6} pos={[-L / 2 - 0.3, 0.6, -0.6]} rot={[0, 0, Math.PI / 2]} color="#e9e9e4" seg={12} />
-      <Box size={[0.6, 0.4, 0.8]} pos={[-L / 2 - 0.3, 0.2, 0]} color="#e9e9e4" />
+      {[-0.2, -0.33].map((z) => (
+        <Cyl key={z} r={0.035} h={0.02} pos={[L / 2 - 0.55, D + 0.08, z]} color="#3a2a12" rough={0.3} seg={8} />
+      ))}
+      <Halo pos={[L / 2 - 0.55, D + 0.15, -0.05]} size={0.5} color="#45ff6a" read={() => (liveOf(part.id)?.on ? 0.7 : 0)} />
+      {/* tubos de cobre isolados (fita branca) e mangueira de condensados, a sair pelo lado −x */}
+      <Cyl r={0.18} h={0.6} pos={[-L / 2 - 0.3, 0.6, -0.6]} rot={[0, 0, Math.PI / 2]} color="#e9e9e4" rough={0.7} seg={12} />
+      <Cyl r={0.07} h={0.62} pos={[-L / 2 - 0.3, 0.3, -0.9]} rot={[0, 0, Math.PI / 2]} color="#9aa3a8" rough={0.6} seg={10} />
+      {/* régua de bornes da alimentação */}
+      <Bornes pos={[-L / 2 - 0.3, 0.2, 0]} size={[0.6, 0.4, 0.92]} />
       {/* ar frio */}
       <group ref={air} visible={false}>
         {airMats.map((m, i) => (

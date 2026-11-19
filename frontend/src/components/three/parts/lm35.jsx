@@ -1,27 +1,11 @@
-// LM35 em encapsulamento TO-92: face plana (com a marcação) virada para a frente (+x).
-import { Box, Leg, useLabel } from '../kit.jsx'
+// LM35DZ em encapsulamento TO-92: face plana (com a marcação) virada para a frente (+x).
+import { To92F } from './_groupF.jsx'
 import def from '@shared/parts/lm35.js'
 
+const PINS = def.pins.map((p) => p.pos)
+
 function Model() {
-  const label = useLabel([{ text: 'LM35', font: 'bold 64px Arial', y: 50 }, { text: 'DZ', font: '48px Arial', y: 110 }], 256, 160)
-  return (
-    <group>
-      {def.pins.map((p) => (
-        <Leg key={p.id} from={p.pos} to={[0, 0.5, p.pos[2] * 0.9]} />
-      ))}
-      <group position={[0.1, 0.5, 0]}>
-        <mesh position={[0, 0.25, 0]} castShadow>
-          <cylinderGeometry args={[0.24, 0.24, 0.5, 24, 1, false, Math.PI, Math.PI]} />
-          <meshStandardMaterial color="#1a1a1a" roughness={0.5} side={2} />
-        </mesh>
-        <Box size={[0.01, 0.5, 0.48]} pos={[0, 0.25, 0]} color="#1c1c1c" />
-        <mesh position={[0.006, 0.28, 0]} rotation={[0, Math.PI / 2, 0]}>
-          <planeGeometry args={[0.4, 0.25]} />
-          <meshBasicMaterial map={label} transparent />
-        </mesh>
-      </group>
-    </group>
-  )
+  return <To92F line1="LM35" line2="DZ" x={0.14} pins={PINS} />
 }
 
 // ligado ao contrário: aquece (e queima)

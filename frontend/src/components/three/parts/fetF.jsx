@@ -1,13 +1,14 @@
-// MOSFET do grupo F: 2N7000 (TO-92) e IRF540N / IRF9540 / FQP27P06 (TO-220).
+// MOSFET do grupo F: 2N7000 (TO-92) e IRF540N / IRF9540 / FQP27P06 (TO-220), com os
+// encapsulamentos reais de _groupF.jsx / _to220.jsx.
 import FET_DEFS from '@shared/parts/fetF.js'
 import { To92F, To220F } from './_groupF.jsx'
 import { Badge, Boom, fmt } from './group-c-ui.jsx'
 
 function make(def) {
-  const sub = def.fet.pol === 'p' ? 'P-MOS' : 'N-MOS'
+  // marcação real: referência e código de lote (sem "N-MOS"/"P-MOS", que não vem impresso)
   function Model({ part }) {
-    if (def.fet.pkg === 'TO-92') return <To92F line1={def.fet.mark} line2={sub} />
-    return <To220F line1={def.fet.mark} line2={sub} heatsink={!!part.config?.heatsink} />
+    if (def.fet.pkg === 'TO-92') return <To92F line1={def.fet.mark} line2="347 B" />
+    return <To220F line1={def.fet.mark} heatsink={!!part.config?.heatsink} />
   }
   function Overlay2D({ info, live }) {
     if (!live) return null

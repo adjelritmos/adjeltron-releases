@@ -25,8 +25,11 @@ export default {
     { id: '+', label: '+ (XT60, vermelho)', pos: [5.45, 0.9, -0.35], kind: 'bat+' },
     { id: '-', label: '− (XT60, preto)', pos: [5.45, 0.9, 0.35], kind: 'bat-' },
   ],
-  config: { charge: 100 },
-  fields: [{ key: 'charge', label: 'Carga', type: 'range', min: 0, max: 100, step: 5, unit: '%' }],
+  config: { charge: 100, color: '#16171a' },
+  fields: [
+    { key: 'charge', label: 'Carga', type: 'range', min: 0, max: 100, step: 5, unit: '%' },
+    { key: 'color', label: 'Cor da manga', type: 'color' },
+  ],
   mass: 125,
   view2d: { view: 'top', x: [-3.9, 5.85], z: [-1.85, 1.85] },
 }

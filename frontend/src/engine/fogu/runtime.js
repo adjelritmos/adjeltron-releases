@@ -115,6 +115,13 @@ struct FgI2c {
   }
 };
 
+// dispositivo SPI (mcu.spi({ cs: "D10" })): por agora só o chip select, para os drivers
+struct FgSpi {
+  long cs = -1;
+  FgSpi() {}
+  FgSpi(long c) { cs = c; pinMode(cs, OUTPUT); digitalWrite(cs, HIGH); }
+};
+
 void __fg_panic(String msg, long line) {
   Serial.print("[fogu] erro em execucao na linha ");
   Serial.print(line);
@@ -245,19 +252,177 @@ void __fg_every(long ms, long h) {
   __fg_tmN++;
 }
 void __fg_onSerial(long h) { __fg_serialH = h; }
-long __fg_pulses(long pin) {
-  for (long i = 0; i < __fg_pulseN; i++) if (__fg_pulsePin[i] == pin) return __fg_pulseCount[i];
-  return 0;
+// pin.pulseCount(): subidas contadas numa interrupção (como na mcu); o pino começa a contar na
+// primeira chamada de pulseCount() / resetPulseCount()
+void __fg_pisr0() { __fg_pulseCount[0]++; }
+void __fg_pisr1() { __fg_pulseCount[1]++; }
+void __fg_pisr2() { __fg_pulseCount[2]++; }
+void __fg_pisr3() { __fg_pulseCount[3]++; }
+void __fg_pisr4() { __fg_pulseCount[4]++; }
+void __fg_pisr5() { __fg_pulseCount[5]++; }
+void __fg_pisr6() { __fg_pulseCount[6]++; }
+void __fg_pisr7() { __fg_pulseCount[7]++; }
+long __fg_pulseIdx(long pin) {
+  for (long i = 0; i < __fg_pulseN; i++) if (__fg_pulsePin[i] == pin) return i;
+  if (__fg_pulseN >= 8) __fg_panic(String("demasiados pinos com pulseCount (8)"), 0);
+  long i = __fg_pulseN;
+  __fg_pulseN++;
+  __fg_pulsePin[i] = pin;
+  __fg_pulseCount[i] = 0;
+  long irq = digitalPinToInterrupt(pin);
+  if (i == 0) attachInterrupt(irq, __fg_pisr0, RISING);
+  else if (i == 1) attachInterrupt(irq, __fg_pisr1, RISING);
+  else if (i == 2) attachInterrupt(irq, __fg_pisr2, RISING);
+  else if (i == 3) attachInterrupt(irq, __fg_pisr3, RISING);
+  else if (i == 4) attachInterrupt(irq, __fg_pisr4, RISING);
+  else if (i == 5) attachInterrupt(irq, __fg_pisr5, RISING);
+  else if (i == 6) attachInterrupt(irq, __fg_pisr6, RISING);
+  else attachInterrupt(irq, __fg_pisr7, RISING);
+  return i;
 }
-void __fg_pulsesReset(long pin) {
-  for (long i = 0; i < __fg_pulseN; i++) if (__fg_pulsePin[i] == pin) __fg_pulseCount[i] = 0;
+long __fg_pulses(long pin) { return __fg_pulseCount[__fg_pulseIdx(pin)]; }
+void __fg_pulsesReset(long pin) { __fg_pulseCount[__fg_pulseIdx(pin)] = 0; }
+
+// ---------- mcu.timer(period, h, { oneShot, immediate }) ----------
+long __fg_tiH[8];
+unsigned long __fg_tiPer[8];
+unsigned long __fg_tiNext[8];
+bool __fg_tiOn[8];
+bool __fg_tiOne[8];
+long __fg_tiCount[8];
+long __fg_tiN = 0;
+struct FgTimer {
+  long i = -1;
+  FgTimer() {}
+  FgTimer(long k) { i = k; }
+  void cancel() { __fg_tiOn[i] = false; }
+  void restart() { __fg_tiOn[i] = true; __fg_tiNext[i] = micros() + __fg_tiPer[i]; }
+  bool running() { return __fg_tiOn[i]; }
+  long count() { return __fg_tiCount[i]; }
+  long period() { return (long)__fg_tiPer[i]; }
+  void setPeriod(long us) {
+    if (us < 50) __fg_panic(String("periodo do timer abaixo de 50 us: ") + String(us), 0);
+    __fg_tiPer[i] = us;
+  }
+};
+FgTimer __fg_timer(long us, long h, bool oneShot) {
+  if (__fg_tiN >= 8) __fg_panic(String("demasiados timers (8)"), 0);
+  if (us < 50) __fg_panic(String("periodo do timer abaixo de 50 us: ") + String(us), 0);
+  long i = __fg_tiN;
+  __fg_tiN++;
+  __fg_tiH[i] = h;
+  __fg_tiPer[i] = us;
+  __fg_tiNext[i] = micros() + us;
+  __fg_tiOn[i] = true;
+  __fg_tiOne[i] = oneShot;
+  __fg_tiCount[i] = 0;
+  return FgTimer(i);
 }
+
+// ---------- handlers imediatos: correm dentro da interrupção (attachInterrupt) ----------
+long __fg_iH[8];
+long __fg_iPin[8];
+long __fg_iMode[8]; // 2 subida, 3 descida, 4 mudança, 7 nível LOW, 8 nível HIGH
+long __fg_iN = 0;
+bool __fg_masked[64];
+void __fg_mask(long pin, bool on) { if (pin >= 0 && pin < 64) __fg_masked[pin] = on; }
+void __fg_iRun(long k) {
+  if (__fg_masked[__fg_iPin[k]]) return;
+  long m = __fg_iMode[k];
+  if (m == 7 && digitalRead(__fg_iPin[k]) != LOW) return;
+  if (m == 8 && digitalRead(__fg_iPin[k]) != HIGH) return;
+  __fg_run(__fg_iH[k]);
+}
+void __fg_iisr0() { __fg_iRun(0); }
+void __fg_iisr1() { __fg_iRun(1); }
+void __fg_iisr2() { __fg_iRun(2); }
+void __fg_iisr3() { __fg_iRun(3); }
+void __fg_iisr4() { __fg_iRun(4); }
+void __fg_iisr5() { __fg_iRun(5); }
+void __fg_iisr6() { __fg_iRun(6); }
+void __fg_iisr7() { __fg_iRun(7); }
+void __fg_onImm(long pin, long kind, long h) {
+  if (__fg_iN >= 8) __fg_panic(String("demasiados handlers imediatos (8)"), 0);
+  long k = __fg_iN;
+  __fg_iN++;
+  __fg_iH[k] = h;
+  __fg_iPin[k] = pin;
+  __fg_iMode[k] = kind;
+  int mode = kind == 2 ? RISING : kind == 3 ? FALLING : CHANGE;
+  long irq = digitalPinToInterrupt(pin);
+  if (k == 0) attachInterrupt(irq, __fg_iisr0, mode);
+  else if (k == 1) attachInterrupt(irq, __fg_iisr1, mode);
+  else if (k == 2) attachInterrupt(irq, __fg_iisr2, mode);
+  else if (k == 3) attachInterrupt(irq, __fg_iisr3, mode);
+  else if (k == 4) attachInterrupt(irq, __fg_iisr4, mode);
+  else if (k == 5) attachInterrupt(irq, __fg_iisr5, mode);
+  else if (k == 6) attachInterrupt(irq, __fg_iisr6, mode);
+  else attachInterrupt(irq, __fg_iisr7, mode);
+}
+void __fg_detach(long pin) { detachInterrupt(digitalPinToInterrupt(pin)); }
+// mcu.interrupts(on): no simulador não há interrupções a mascarar (os handlers continuam a correr)
+void __fg_interrupts(bool on) {}
+
+// ---------- canais (mcu.channel / mcu.isrQueue), atomic e mutex ----------
+// receive() espera (com os handlers e as outras tarefas a correr entretanto)
+void __fg_delay(long ms);
+struct FgChanI {
+  long q[16];
+  long cap = 16;
+  long h = 0;
+  long n = 0;
+  FgChanI() {}
+  FgChanI(long c) { cap = c < 1 ? 1 : (c > 16 ? 16 : c); }
+  bool trySend(long v) { if (n >= cap) return false; q[(h + n) % cap] = v; n++; return true; }
+  void send(long v) { while (n >= cap) __fg_delay(1); trySend(v); }
+  long receive() { while (n == 0) __fg_delay(1); long v = q[h]; h = (h + 1) % cap; n--; return v; }
+  long tryReceive() { if (n == 0) return 0; return receive(); }
+  bool available() { return n > 0; }
+  bool full() { return n >= cap; }
+  long count() { return n; }
+};
+struct FgChanS {
+  String q[16];
+  long cap = 16;
+  long h = 0;
+  long n = 0;
+  FgChanS() {}
+  FgChanS(long c) { cap = c < 1 ? 1 : (c > 16 ? 16 : c); }
+  bool trySend(String v) { if (n >= cap) return false; q[(h + n) % cap] = v; n++; return true; }
+  void send(String v) { while (n >= cap) __fg_delay(1); trySend(v); }
+  String receive() { while (n == 0) __fg_delay(1); String v = q[h]; h = (h + 1) % cap; n--; return v; }
+  String tryReceive() { if (n == 0) return String(""); return receive(); }
+  bool available() { return n > 0; }
+  bool full() { return n >= cap; }
+  long count() { return n; }
+};
+struct FgAtomic {
+  long v = 0;
+  FgAtomic() {}
+  FgAtomic(long x) { v = x; }
+  long get() { return v; }
+  void set(long x) { v = x; }
+  long add(long d) { v += d; return v; }
+  long sub(long d) { v -= d; return v; }
+  long increment() { v++; return v; }
+  long decrement() { v--; return v; }
+};
+struct FgMutex {
+  bool l = false;
+  void lock() { while (l) __fg_delay(1); l = true; }
+  bool tryLock() { if (l) return false; l = true; return true; }
+  void unlock() { l = false; }
+  bool locked() { return l; }
+};
+
+void __fg_uartPoll(); // gerado pelo compilador (portas mcu.uart)
 
 void __fg_poll() {
   if (__fg_inPoll) return; // um handler que espera não corre outros handlers dentro de si
   __fg_inPoll = true;
   unsigned long now = millis();
   for (long i = 0; i < __fg_evN; i++) {
+    if (__fg_masked[__fg_evPin[i]]) continue;
     long v = digitalRead(__fg_evPin[i]) == HIGH ? 1 : 0;
     long k = __fg_evKind[i];
     if (k == 7 || k == 8) {
@@ -298,6 +463,17 @@ void __fg_poll() {
       __fg_run(__fg_tmH[i]);
     }
   }
+  // mcu.timer: períodos em µs (os que já passaram correm agora, um de cada vez)
+  unsigned long nowUs = micros();
+  for (long i = 0; i < __fg_tiN; i++) {
+    if (!__fg_tiOn[i] || (long)(nowUs - __fg_tiNext[i]) < 0) continue;
+    __fg_tiNext[i] += __fg_tiPer[i];
+    if ((long)(nowUs - __fg_tiNext[i]) >= 0) __fg_tiNext[i] = nowUs + __fg_tiPer[i];
+    __fg_tiCount[i]++;
+    if (__fg_tiOne[i]) __fg_tiOn[i] = false;
+    __fg_run(__fg_tiH[i]);
+  }
+  __fg_uartPoll();
   if (__fg_serialH >= 0 && Serial.available() > 0) __fg_run(__fg_serialH);
   __fg_inPoll = false;
 }

@@ -98,6 +98,11 @@ export default {
     const pressed = !!input.pressed
     if (pressed && !s.prevBtn && !s.pwr) s.wantOn = true
     s.prevBtn = pressed
+    // botão OFF: o ATtiny corta a bateria (e anula um ON pendente)
+    if (input.off) {
+      s.wantOn = false
+      turn(false, i18n.m('botão OFF', 'OFF button'))
+    }
     if (!s.pwr && s.wantOn) {
       s.wantOn = false
       if (vbat < 0.5) log(i18n.m('⚠ Pico4Drive: carregou em ON mas não há bateria no borne VBAT/GND (5–11 V).', '⚠ Pico4Drive: ON was pressed but there is no battery on the VBAT/GND terminal (5–11 V).'), 'warn')
@@ -168,6 +173,7 @@ export default {
     live.vbat = Math.round((s.vbat || 0) * 100) / 100
     live.v5 = Math.round(vd('J.5V', 'GND') * 100) / 100
     live.btn = !!input.pressed
+    live.btnOff = !!input.off
     live.mux = s.mux ?? -1
     live.out = DRV.map(([, , a, b], k) => ({ v: Math.round(vd(b, a) * 100) / 100, i: Math.round((s.amps?.[k] || 0) * 100) / 100, ocp: (s.ocp?.[k] || 0) > 0 }))
   },

@@ -19,7 +19,7 @@ import { hoistStaticLocals, outParams, declaredTypes, eepromTyped, RTOS_TYPES, m
 import { rawStrings, netTransforms, wrapNetBlocking } from './compiler-net.js'
 import { groupGTransforms } from './compiler-g.js'
 import { picoTransforms, picoLateTransforms } from './compiler-pico.js'
-import { intDivision } from './compiler-intdiv.js'
+import { intDivision, charOperands } from './compiler-intdiv.js'
 import { classTransforms, classSkeletons } from './compiler-classes.js'
 import { preprocess } from './compiler-pre.js'
 import * as i18n from '../../../../shared/i18n.js'
@@ -592,6 +592,8 @@ export function transpile(source, { classes = ['Servo'], defines = ['ARDUINO=108
 
   // divisão inteira do C (7 / 2 = 3) — antes de os tipos e os casts desaparecerem
   s = intDivision(s)
+  // 'A' em contas/comparações com números (Serial.read() == 'A', c - '0', switch com case 'x')
+  s = charOperands(s)
 
   // pré-processador (PROGMEM não existe fora do AVR)
   s = s.replace(/\bPROGMEM\b/g, '')
@@ -616,6 +618,10 @@ export function transpile(source, { classes = ['Servo'], defines = ['ARDUINO=108
     t = t.replace(new RegExp(`\\b(${C})\\s+(\\w+)\\s*\\(`, 'g'), 'let $2 = new $1(')
     // DateTime agora = rtc.now();  File f = SD.open(…);  (objetos de biblioteca vindos de uma expressão)
     t = t.replace(new RegExp(`\\b(${C})\\s+(\\w+)\\s*=(?!=)`, 'g'), 'let $2 =')
+    // ponteiros para objetos de biblioteca: camera_fb_t *fb = esp_camera_fb_get();  Servo *s = &a;
+    // (o ponteiro é o próprio objeto; p->campo vira p.campo em compiler-classes.js)
+    t = t.replace(new RegExp(`(^|[;{}(\\n]\\s*)(?:const\\s+)?(${C})\\s*\\*\\s*(\\w+)\\s*=(?!=)`, 'gm'), '$1let $3 =')
+    t = t.replace(new RegExp(`(^|[;{}\\n]\\s*)(?:const\\s+)?(${C})\\s*\\*\\s*(\\w+)\\s*;`, 'gm'), '$1let $3 = null;')
     // IPAddress ip = WiFi.localIP();  (tipos de biblioteca inicializados com uma expressão)
     t = t.replace(/\b(IPAddress|wl_status_t)\s+(\w+)\s*=/g, 'let $2 =')
     t = t.replace(new RegExp(`\\b(${C})\\s+([\\w\\s,]+);`, 'g'), (_, cls, list) => `let ${list.split(',').map((n) => `${n.trim()} = new ${cls}()`).join(', ')};`)

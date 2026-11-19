@@ -1,5 +1,6 @@
 // Página inicial: apresentação, montra 3D, números do catálogo, funcionalidades e chamada final.
-import { Suspense, lazy, useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
+import { lazyReload } from '../functions/staleChunks.js'
 import { Button, Card, CardBody, Chip, Link } from '@heroui/react'
 import { ArrowRight, Play, BookOpen, Download } from 'lucide-react'
 import { FEATURES, STEPS } from '../components/site/features.jsx'
@@ -7,7 +8,7 @@ import { PART_COUNT, BOARD_COUNT, FAMILIES } from '../functions/siteData.js'
 import { api } from '../services/api.js'
 import { useT } from '../i18n/index.js'
 
-const HeroGallery = lazy(() => import('../components/site/HeroGallery.jsx'))
+const HeroGallery = lazyReload(() => import('../components/site/HeroGallery.jsx'))
 
 function useExampleCount() {
   const [n, setN] = useState(null)

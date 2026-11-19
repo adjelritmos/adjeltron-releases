@@ -21,10 +21,11 @@ export default {
     { id: '+', label: '+ (vermelho)', pos: [7.0, 0.2, -0.4], kind: 'bat+', conn: 'solder', dir: [1, 0, 0] },
     { id: '-', label: '− (preto)', pos: [7.0, 0.2, 0.4], kind: 'bat-', conn: 'solder', dir: [1, 0, 0] },
   ],
-  config: { charge: 90, pilhas: 'alcalinas' },
+  config: { charge: 90, pilhas: 'alcalinas', color: '#2e7d32' },
   fields: [
     { key: 'charge', label: 'Carga', type: 'range', min: 0, max: 100, step: 5, unit: '%' },
     { key: 'pilhas', label: 'Pilhas', type: 'select', options: [['alcalinas', 'Alcalinas (1,5 V: ~6 V)'], ['nimh', 'Recarregáveis NiMH (1,2 V: ~4,8–5,5 V)']] },
+    { key: 'color', label: 'Cor das pilhas', type: 'color' },
   ],
   view2d: { view: 'top', x: [-3.3, 7.3], z: [-3.2, 3.2] },
 }

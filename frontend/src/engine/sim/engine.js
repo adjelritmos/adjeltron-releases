@@ -915,8 +915,11 @@ export function createEngine({ parts: inParts, wires, code, compiled = null, tra
       const p = pins[n]
       if (p.mode === 'OUTPUT') return p.out
       if (edgeOv?.has(n)) return edgeOv.get(n)
+      // botão BOOT do ESP32: GPIO0 ao GND quando premido; solto, o pull-up de 10 kΩ da placa
+      if (n === bootPin && inputs[arduino.id]?.boot) return 0
       solve()
       if (circuit.floating(arduino.id, pinName(n))) {
+        if (n === bootPin) return 1
         warnOnce(`float${n}`, i18n.m(`Pino ${pinName(n)} a "flutuar" (nada define o nível): leituras aleatórias, tal como no real. Use INPUT_PULLUP ou uma resistência pull-down.`, `Pin ${pinName(n)} is "floating" (nothing sets its level): random readings, just like in real life. Use INPUT_PULLUP or a pull-down resistor.`))
         return Math.random() < 0.5 ? 1 : 0
       }
@@ -1049,6 +1052,8 @@ export function createEngine({ parts: inParts, wires, code, compiled = null, tra
     // Serial.read() convertido…) ou como número; toupper devolve o mesmo tipo que recebe
     ...charHelpers(),
     // (int)c de um caractere em texto = código ASCII (os casts usam esta função)
+    // carácter em texto → código ASCII; números ficam (literais 'x' em contas/comparações)
+    __ord: (v) => (typeof v === 'string' ? (v.length ? v.charCodeAt(0) : 0) : v),
     __toInt: (v) => (typeof v === 'string' ? (v.length ? v.charCodeAt(0) : 0) : Math.trunc(v)),
     // divisão inteira do C (o tradutor só a usa com os dois operandos inteiros); /0 → 0 em vez de Infinity
     __idiv: (a, b) => {
@@ -1209,12 +1214,15 @@ export function createEngine({ parts: inParts, wires, code, compiled = null, tra
     return netPinsCache.get(n)
   }
   const pwmFreq = (n) => pins[n].tone || pins[n].freq || (isPico ? api.rp2040.pwmFreq : defaultPwmFreq(prof, n))
+  // botão BOOT das placas ESP32 (GPIO0, com pull-up de 10 kΩ na placa): premido lê LOW
+  const bootPin = isEsp ? 0 : -1
   const readLevel = (n) => {
     if (!arduino) return null
     if (pins[n].mode === 'OUTPUT') return pins[n].out
     if (edgeOv?.has(n)) return edgeOv.get(n)
+    if (n === bootPin && inputs[arduino.id]?.boot) return 0
     solve()
-    if (circuit.floating(arduino.id, pinName(n))) return null
+    if (circuit.floating(arduino.id, pinName(n))) return n === bootPin ? 1 : null
     return pinV(n) > vioNow() / 2 ? 1 : 0
   }
   const readVolt = (n) => {
@@ -1225,7 +1233,9 @@ export function createEngine({ parts: inParts, wires, code, compiled = null, tra
   const irq = createInterrupts({ prof, pins, rt, warnOnce, readLevel, netPins, pwmFreq, now: () => simUs })
   Object.assign(api, irq.api)
   api.attachInterruptArg = (pin, fn, arg, mode) => api.attachInterrupt(pin, function* () { return yield* fn(arg) }, mode)
-  const rtos = isEsp ? createRtos({ rt, warnOnce }) : null
+  // tarefas FreeRTOS: no ESP32 (o core Arduino traz o FreeRTOS) e nos programas em Fogu, cuja
+  // biblioteca mcu tem tarefas preemptivas em todos os chips (mcu.task / fg fn())
+  const rtos = isEsp || /__fg_taskStart/.test(String(code || '') + String(compiled || '')) ? createRtos({ rt, warnOnce }) : null
   if (rtos) Object.assign(api, rtos.api)
   // sizeof(tipo) (o transpilador troca-o por __sizeofT('tipo'))
   // sizeof(variável): vetores (também matrizes e char[]) = elementos × tamanho do tipo
@@ -1430,6 +1440,7 @@ export function createEngine({ parts: inParts, wires, code, compiled = null, tra
   let wasRunning = false
   let halted = false
   let boots = 0
+  let resetHeld = false
   const resetArduino = () => {
     rt.t = simUs - 1000
     txFree = 0
@@ -1469,6 +1480,27 @@ export function createEngine({ parts: inParts, wires, code, compiled = null, tra
       gen = null
     }
     wasRunning = running
+
+    // botão RESET / EN da placa: premido segura o microcontrolador em reset (o programa para e
+    // os pinos ficam em entrada); ao largar o programa recomeça do início, como na placa real
+    const resetNow = !!(arduino && inputs[arduino.id]?.reset)
+    if (running && resetNow && !resetHeld) {
+      resetHeld = true
+      for (const p of pins) Object.assign(p, { mode: 'INPUT', out: 0, pwm: false, tone: 0 })
+      servoOut.clear()
+      servoUs.clear()
+      dirty = true
+      gen = null
+      rtos?.reset()
+    } else if (resetHeld && !resetNow) {
+      resetHeld = false
+      halted = false
+      error = null
+      if (running) {
+        onSerial?.(i18n.m('ℹ Botão RESET: o programa recomeçou.\n', 'ℹ RESET button: the program restarted.\n'), 'info')
+        resetArduino()
+      }
+    }
 
     // 1) programa (+ interrupções externas e tarefas do FreeRTOS)
     if (mcuEmu) {

@@ -1,6 +1,7 @@
-// Suporte em U: base furada (ao longo de z) e duas abas verticais.
-import { Box } from '../kit.jsx'
-import { Holes, ALU } from './_mechKit.jsx'
+// Suporte em U de alumínio (chapa de 2,5 mm dobrada, como os dos kits Makeblock/goBILDA): base
+// furada (ao longo de z) e duas abas verticais com os cantos de cima boleados, furos M4
+// passantes a cada 8 mm e acabamento escovado.
+import { plateGeo, wallGeo, addHole, rrectShape, brushedMat, ALU } from './_mechKit.jsx'
 import { HOLE, beamLen } from '@shared/parts/_mech.js'
 import { UB } from '@shared/parts/uBracket.js'
 
@@ -12,14 +13,20 @@ function Model({ part }) {
   const zs = Array.from({ length: n }, (_, i) => -beamLen(n) / 2 + i * HOLE)
   const ny = Math.max(1, Math.floor((H - 0.4) / HOLE))
   const ys = Array.from({ length: ny }, (_, i) => H - 0.6 - i * HOLE).filter((y) => y > T + 0.3)
+  const m = brushedMat(ALU, 0.85, 0.34)
+  const base = plateGeo(`ub${n}`, T, () => {
+    const s = rrectShape(-UB.W / 2, -(B / 2 + T), UB.W / 2, B / 2 + T, 0.02)
+    for (const z of zs) addHole(s, 0, -z, 0.21)
+    return s
+  }, 0.02)
+  // as abas assentam na base (de y = T até H)
+  const wall = wallGeo(`ub${n},${ys.join(':')}`, UB.W, H - T, T, ys.map((y) => [0, y - T]))
   return (
     <group>
-      <Box size={[UB.W, T, B + 2 * T]} pos={[0, T / 2, 0]} color={ALU} metal={0.85} rough={0.32} />
+      <mesh geometry={base} material={m} castShadow receiveShadow />
       {[-1, 1].map((s) => (
-        <Box key={s} size={[UB.W, H, T]} pos={[0, H / 2, s * (B / 2 + T / 2)]} color={ALU} metal={0.85} rough={0.32} />
+        <mesh key={s} geometry={wall} position={[0, T, s * (B / 2 + T / 2)]} material={m} castShadow receiveShadow />
       ))}
-      <Holes pts={zs.map((z) => [0, T / 2, z])} r={0.2} h={T + 0.02} />
-      <Holes pts={[-1, 1].flatMap((s) => ys.map((y) => [0, y, s * (B / 2 + T / 2)]))} r={0.2} h={T + 0.02} axis="z" />
     </group>
   )
 }

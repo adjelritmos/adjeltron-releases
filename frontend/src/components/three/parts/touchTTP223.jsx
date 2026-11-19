@@ -1,28 +1,50 @@
-// TTP223: placa vermelha de 15 × 11 mm com o círculo do elétrodo, chip SOT-23-6 e LED.
-import { Pcb, HeaderPins, Cyl, liveOf, inputOf, useFrame, useRef } from '../kit.jsx'
+// TTP223: placa vermelha de 15 × 11 mm com o elétrodo redondo (cobre sob o verniz, anel de
+// serigrafia), o TTP223 em SOT-23-6, o LED vermelho, o condensador 0603 e os jumpers A/B de
+// solda (almofadas estanhadas).
+import { HeaderPins, liveOf, inputOf, useFrame, useRef, geo, mat, THREE } from '../kit.jsx'
 import def from '@shared/parts/touchTTP223.js'
-import { Smd, Ic, Led, Silk } from './_groupG.jsx'
+import { ShapedPcb, Art, SmdField, SmdLed, Sot23, SILK } from './mq2.jsx'
 
 const T = 0.1
+const PAD = [0.25, 0] // centro do elétrodo
+
+function draw(p) {
+  // jumpers A (saída ativa a LOW) e B (modo interruptor): 2 almofadas cada
+  for (const [x, z, n, dx] of [
+    [0.05, -0.45, 'A', 0.13],
+    [0.6, -0.42, 'B', -0.13],
+  ]) {
+    p.pad(x - 0.04, z, 0.06, 0.07)
+    p.pad(x + 0.04, z, 0.06, 0.07)
+    p.text(n, x + dx, z, 0.07)
+  }
+  p.text('TTP223', PAD[0], 0.48, 0.09)
+}
 
 function Model({ part }) {
   const pad = useRef()
   useFrame(() => {
-    if (pad.current) pad.current.position.y = T + (inputOf(part.id).pressed ? 0.0 : 0.006)
+    if (pad.current) pad.current.position.y = T + (inputOf(part.id).pressed ? 0.0025 : 0.005)
   })
   return (
     <group>
-      <Pcb size={[1.5, T, 1.1]} pos={[0, 0, 0]} color="#c62828" holes={false} />
-      {/* elétrodo: anel serigrafado + cobre estanhado */}
-      <group ref={pad} position={[0.25, T + 0.006, 0]}>
-        <Cyl r={0.42} h={0.01} color="#f2f2f2" seg={40} />
-        <Cyl r={0.37} h={0.012} color="#c62828" seg={40} />
-        <Cyl r={0.3} h={0.014} color="#d9c27a" metal={0.6} rough={0.35} seg={40} />
+      <ShapedPcb id="ttp223" w={1.5} d={1.1} t={T} r={0.05} color="#c62828" />
+      <Art id="ttp223" w={1.5} d={1.1} pos={[0, T + 0.0015, 0]} draw={draw} ppc={400} />
+      {/* elétrodo: anel de serigrafia e o cobre sob o verniz (um pouco mais claro e brilhante) */}
+      <group ref={pad} position={[PAD[0], T + 0.005, PAD[1]]}>
+        <mesh rotation={[-Math.PI / 2, 0, 0]} geometry={geo('ttp:ring', () => new THREE.RingGeometry(0.37, 0.42, 40))} material={mat(SILK, 0, 0.6)} />
+        <mesh rotation={[-Math.PI / 2, 0, 0]} geometry={geo('ttp:pad', () => new THREE.CircleGeometry(0.33, 40))} material={mat('#d9433b', 0.15, 0.3)} />
       </group>
-      <Ic pos={[-0.2, T, -0.35]} size={[0.28, 0.1, 0.16]} />
-      <Smd pos={[-0.2, T, 0.38]} />
-      <Led pos={[-0.32, T, 0.05]} color="#ff2020" read={() => (liveOf(part.id)?.led ? 1 : 0)} />
-      <Silk text="TTP223" pos={[0.25, T + 0.02, 0.48]} w={0.6} h={0.1} />
+      <Sot23 pos={[-0.2, T, -0.35]} n={6} />
+      <SmdLed pos={[-0.32, T, 0.05]} rotY={Math.PI / 2} size={[0.16, 0.07, 0.08]} color="#ff2020" read={() => (liveOf(part.id)?.led ? 1 : 0)} halo={0.5} />
+      <SmdField
+        id="ttp223"
+        y={T}
+        items={[
+          [-0.2, 0.38, 0, 'c'],
+          [-0.04, 0.36, 0],
+        ]}
+      />
       <HeaderPins pins={def.pins} base={0} up={0.45} />
     </group>
   )

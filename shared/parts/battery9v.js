@@ -19,7 +19,10 @@ export default {
     { id: '+', label: '+ (vermelho)', pos: [6.2, 0.2, -0.4], kind: 'bat+', conn: 'solder', dir: [1, 0, 0] },
     { id: '-', label: '− (preto)', pos: [6.2, 0.2, 0.4], kind: 'bat-', conn: 'solder', dir: [1, 0, 0] },
   ],
-  config: { charge: 90 },
-  fields: [{ key: 'charge', label: 'Carga', type: 'range', min: 0, max: 100, step: 5, unit: '%' }],
+  config: { charge: 90, color: '#f59e0b' },
+  fields: [
+    { key: 'charge', label: 'Carga', type: 'range', min: 0, max: 100, step: 5, unit: '%' },
+    { key: 'color', label: 'Cor da manga', type: 'color' },
+  ],
   view2d: { view: 'top', x: [-2.55, 6.45], z: [-1.45, 1.45] },
 }

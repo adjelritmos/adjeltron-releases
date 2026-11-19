@@ -1,41 +1,26 @@
-// Driver L9110S: placa azul com os dois chips SOIC-8, condensadores, LED de alimentação,
-// 6 pinos macho de um lado e dois bornes de parafuso verdes (MOTOR B, MOTOR A) do outro.
-import { Box, Cyl, Pcb, HeaderPins, GlowLed, liveOf } from '../kit.jsx'
-import { Chip } from './_analogModule.jsx'
+// Driver L9110S (HG7881): placa azul de 29 × 23 mm, os dois chips L9110S
+// (SOIC-8, marcados), condensadores 1206, LED de alimentação com a resistência, 6 pinos macho de um
+// lado e dois bornes de parafuso azuis de 5 mm (MOTOR B, MOTOR A) com as bocas viradas para +x.
+import { HeaderPins, GlowLed, liveOf, Chip } from '../kit.jsx'
+import { PcbPlate, ScrewTerminal, Smds } from './_boardKit.jsx'
 import def from '@shared/parts/l9110s.js'
 
 const T = 0.16
-
-// borne de parafuso de 2 vias (5 mm), virado para +x
-function Terminal({ z }) {
-  return (
-    <group position={[1.0, T, z]}>
-      <Box size={[0.75, 0.95, 1.0]} pos={[0, 0.475, 0]} color="#1e9e4a" rough={0.5} />
-      {[-0.25, 0.25].map((dz) => (
-        <group key={dz}>
-          <Cyl r={0.17} h={0.06} pos={[-0.05, 0.98, dz]} color="#c9ccd1" metal={0.9} rough={0.3} seg={16} />
-          <Box size={[0.26, 0.02, 0.05]} pos={[-0.05, 1.01, dz]} rot={[0, Math.PI / 4, 0]} color="#555" />
-          <Box size={[0.04, 0.32, 0.34]} pos={[0.38, 0.3, dz]} color="#111" />
-        </group>
-      ))}
-    </group>
-  )
-}
+const SMDS = [[0.3, -0.15, 0, 'K'], [0.3, 0.15, 0, 'K'], [-0.75, 0.72, 0, 'r'], [-0.75, -0.75, 0, 'c'], [0.25, -0.75, 1, 'c'], [0.25, 0.75, 1, 'c']]
 
 function Model({ part }) {
   return (
     <group>
-      <Pcb size={[2.9, T, 2.3]} pos={[0, 0, 0]} color="#1d4ed8" />
+      <PcbPlate id="l9110s" w={2.9} d={2.3} t={T} y={0} r={0.06} color="#1d4ed8" />
       <HeaderPins pins={def.pins.filter((p) => !p.id.startsWith('O'))} base={0} />
-      <Chip pos={[-0.25, T, -0.55]} size={[0.5, 0.15, 0.4]} />
-      <Chip pos={[-0.25, T, 0.55]} size={[0.5, 0.15, 0.4]} />
-      {/* condensadores SMD e LED de alimentação */}
-      {[-0.15, 0.15].map((z) => (
-        <Box key={z} size={[0.2, 0.12, 0.12]} pos={[0.3, T + 0.06, z]} color="#c8a46a" rough={0.6} />
-      ))}
+      <Chip pos={[-0.25, T, -0.55]} size={[0.49, 0.15, 0.39]} n={4} label="L9110S" />
+      <Chip pos={[-0.25, T, 0.55]} size={[0.49, 0.15, 0.39]} n={4} label="L9110S" />
+      {/* condensadores 1206, passivos e LED de alimentação */}
+      <Smds id="l9110s" y={T} items={SMDS} />
       <GlowLed pos={[-0.75, T + 0.04, 0.95]} color="#ff3030" read={() => (liveOf(part.id)?.powered ? 1 : 0)} />
-      <Terminal z={-0.6} />
-      <Terminal z={0.6} />
+      {/* bornes de parafuso de 2 vias (MOTOR B em −z, MOTOR A em +z), bocas para +x */}
+      <ScrewTerminal n={2} pitch={0.5} pos={[1.0, T, -0.6]} rotY={-Math.PI / 2} color="#1f7fd1" h={0.95} d={0.75} />
+      <ScrewTerminal n={2} pitch={0.5} pos={[1.0, T, 0.6]} rotY={-Math.PI / 2} color="#1f7fd1" h={0.95} d={0.75} />
     </group>
   )
 }

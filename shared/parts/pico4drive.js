@@ -126,7 +126,7 @@ export default {
     { key: 'uvp', label: 'Proteção de bateria fraca', type: 'select', options: [[true, '2S Li-ion (< 6,0 V desliga)'], [false, 'Desativada (fonte de 5 V)']] },
     { key: 'usbJumper', label: 'Jumper VBUS–VBAT', type: 'select', options: [[false, 'Aberto (bateria)'], [true, 'Fechado (USB da Pico alimenta tudo, máx. 500 mA)']] },
   ],
-  interactive: { kind: 'press', label: 'Botão ON' },
+  interactive: { kind: 'press', label: 'Botão ON', off: 'Botão OFF' },
   lib: {
     header: 'Pico4Drive.h',
     usage: '#include <Pico4Drive.h>\npico4drive_t pico4drive;\npico4drive.init();\npico4drive.update();\npico4drive.set_driver_voltage(4.0, p2d_drv1);\nSerial.println(pico4drive.battery_voltage);',

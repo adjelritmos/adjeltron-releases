@@ -8,13 +8,14 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { CHASSIS, CHASSIS4, BB, bbRowZ, bbRailZ, bbRailX, LED_COLORS, PITCH, DEFS, hidesHorn, motorWheel, vehicleLift } from '@shared/components.js'
 import { useStore } from '../../contexts/store.js'
 import { servoHornRotation } from '@shared/assembly.js'
-import { sonarMode, sonarPcbY, sonarPin } from '@shared/sonar.js'
+import { SONAR_ZS, sonarMode, sonarPcbY, sonarPin } from '@shared/sonar.js'
 import { simRef } from '../../contexts/simRef.js'
 
-import { D2R, eng, jawDeg, useCanvasTexture, useLabel, Box, RBox, Cyl, Leg, GlowLed, Halo, Standoff, powered, HeaderPins, FemaleHeader, geo, mat, pcbMat, METAL, Chip, Smd, ECap, Crystal, UsbB, BarrelJack, TactSwitch, SilkText } from './kit.jsx'
+import { D2R, eng, jawDeg, useCanvasTexture, useLabel, Box, RBox, Cyl, Leg, GlowLed, Halo, Standoff, powered, HeaderPins, FemaleHeader, geo, mat, mergedGeo, pcbMat, METAL, Chip, Smd, ECap, Crystal, UsbB, BarrelJack, TactSwitch, SilkText } from './kit.jsx'
 import { PART_UI } from './parts/index.js'
 import { DiscWheel } from './parts/_discWheel.jsx'
 import { gearGeo as gearGeoFor } from './parts/_mechKit.jsx'
+import { Spring, PlusTab } from './parts/aaPack.jsx'
 
 const P = PITCH
 
@@ -33,7 +34,7 @@ export function TopDecal({ tex, w, d, pos, alphaTest = 0, coat = false }) {
   )
 }
 // placa com contorno arbitrário (pontos [x, z]) extrudida para baixo a partir de `top`
-export function ShapePlate({ pts, top, t, color, rough = 0.5, holes = [] }) {
+export function ShapePlate({ pts, top, t, color, holes = [] }) {
   const shape = useMemo(() => {
     const s = new THREE.Shape()
     pts.forEach(([x, z], i) => (i ? s.lineTo(x, z) : s.moveTo(x, z)))
@@ -48,7 +49,7 @@ export function ShapePlate({ pts, top, t, color, rough = 0.5, holes = [] }) {
   return (
     <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, top, 0]} castShadow receiveShadow>
       <extrudeGeometry args={[shape, { depth: t, bevelEnabled: false, curveSegments: 10 }]} />
-      {/* máscara de solda com verniz (rough mantido por compatibilidade) */}
+      {/* máscara de solda com verniz (a prop rough é aceite e ignorada, por compatibilidade) */}
       <primitive object={pcbMat(color)} attach="material" />
     </mesh>
   )
@@ -184,7 +185,7 @@ function drawUnoSilk(ctx, w, h) {
   ctx.restore()
 }
 
-export function ArduinoModel({ part }) {
+export function ArduinoModel() {
   const silk = useCanvasTexture(drawUnoSilk, ['uno-silk-3'], 1372, 1068)
   const chipTex = useLabel([{ text: 'ATMEGA328P-PU', font: 'bold 34px Arial' }], 512, 96)
   const { T, B } = UNO
@@ -500,46 +501,145 @@ export function PotModel({ part }) {
 }
 
 // ---------- Buzzer ativo ----------
+// Buzzer ativo de 12 mm (TMB12A05): corpo preto brilhante com a base selada (resina), "+" em
+// relevo junto ao ânodo, furo do som em cima e o autocolante "REMOVE SEAL AFTER WASHING"
+// por cima do furo, como vem de fábrica. Perna + mais comprida.
+function drawBuzzerSeal(ctx, w, h) {
+  ctx.fillStyle = '#f3f1ea'
+  ctx.beginPath()
+  ctx.arc(w / 2, h / 2, w / 2 - 2, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.fillStyle = '#222'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.font = 'bold 30px Arial'
+  ctx.fillText('REMOVE', w / 2, h * 0.36)
+  ctx.font = 'bold 24px Arial'
+  ctx.fillText('SEAL AFTER', w / 2, h * 0.52)
+  ctx.fillText('WASHING', w / 2, h * 0.66)
+}
 export function BuzzerModel() {
+  const seal = useCanvasTexture(drawBuzzerSeal, ['buzzer-seal'], 192, 192)
   return (
     <group>
       <Leg from={[-0.381, 0, 0]} to={[-0.381, 0.1, 0]} r={0.03} />
       <Leg from={[0.381, 0, 0]} to={[0.381, 0.1, 0]} r={0.03} />
-      <Cyl r={0.6} h={0.82} pos={[0, 0.51, 0]} color="#151515" rough={0.35} seg={32} />
-      <Cyl r={0.56} h={0.02} pos={[0, 0.93, 0]} color="#1d1d1d" rough={0.5} seg={32} />
-      <Cyl r={0.1} h={0.03} pos={[0, 0.935, 0]} color="#050505" seg={16} />
-      <Box size={[0.16, 0.012, 0.04]} pos={[-0.32, 0.945, 0]} color="#ddd" />
-      <Box size={[0.04, 0.012, 0.16]} pos={[-0.32, 0.945, 0]} color="#ddd" />
+      {/* base selada com resina e corpo */}
+      <Cyl r={0.58} h={0.08} pos={[0, 0.14, 0]} color="#0e0e0e" rough={0.8} seg={32} />
+      <Cyl r={0.6} h={0.7} pos={[0, 0.53, 0]} color="#151515" rough={0.3} seg={32} />
+      <Cyl r={0.58} r2={0.6} h={0.05} pos={[0, 0.905, 0]} color="#161616" rough={0.32} seg={32} />
+      <Cyl r={0.1} h={0.03} pos={[0, 0.92, 0]} color="#050505" seg={16} />
+      {/* "+" em relevo junto ao ânodo */}
+      <Box size={[0.16, 0.012, 0.04]} pos={[-0.36, 0.934, 0]} color="#2a2a2a" />
+      <Box size={[0.04, 0.012, 0.16]} pos={[-0.36, 0.934, 0]} color="#2a2a2a" />
+      {/* autocolante de proteção por cima do furo */}
+      <mesh position={[0.05, 0.937, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[0.62, 0.62]} />
+        <meshStandardMaterial map={seal} transparent alphaTest={0.5} roughness={0.7} />
+      </mesh>
     </group>
   )
 }
 
-// ---------- Bateria 2x18650 ----------
+// ---------- Bateria 2×18650 ----------
+// Suporte preto de ABS para 2 células 18650 (Ø18 × 65 mm) em série: células de lata de aço com a
+// manga impressa e o anel isolador, polo + com o botão e os furos de ventilação, molas cónicas no
+// polo −, patilhas niqueladas no +, ponte em série e os fios de saída vermelho/preto.
+const cell18650Geo = () =>
+  geo('c18650', () => {
+    const Pr = [[0, -3.25], [0.75, -3.25], [0.86, -3.23], [0.9, -3.17], [0.9, 3.12], [0.87, 3.2], [0.8, 3.23], [0.45, 3.23], [0.42, 3.25], [0.4, 3.31], [0.36, 3.33], [0, 3.33]]
+    const g = new THREE.LatheGeometry(Pr.map(([r, y]) => new THREE.Vector2(r, y)), 28)
+    g.rotateZ(-Math.PI / 2)
+    return g
+  })
+const cellWrap18650Geo = () =>
+  geo('c18650wrap', () => {
+    const g = new THREE.CylinderGeometry(0.904, 0.904, 6.32, 28, 1, true)
+    g.rotateZ(-Math.PI / 2)
+    g.translate(-0.03, 0, 0)
+    return g
+  })
+const WRAP18 = new Map()
+function wrap18650Mat(color) {
+  let m = WRAP18.get(color)
+  if (m) return m
+  const c = document.createElement('canvas')
+  c.width = 256
+  c.height = 512
+  const x = c.getContext('2d')
+  x.fillStyle = color
+  x.fillRect(0, 0, 256, 512)
+  x.fillStyle = 'rgba(255,255,255,0.18)'
+  x.fillRect(0, 0, 256, 34)
+  x.fillStyle = '#f2f2f2'
+  x.textAlign = 'center'
+  x.textBaseline = 'middle'
+  for (const u of [64, 192]) {
+    x.save()
+    x.translate(u, 270)
+    x.rotate(-Math.PI / 2)
+    x.font = 'bold 44px Arial'
+    x.fillText('18650  3.7V', 0, -16)
+    x.font = 'bold 22px Arial'
+    x.fillText('3000mAh · Li-ion · 11.1Wh', 0, 26)
+    x.restore()
+    x.save()
+    x.translate(u, 60)
+    x.rotate(-Math.PI / 2)
+    x.font = 'bold 50px Arial'
+    x.fillText('+', 0, 0)
+    x.restore()
+  }
+  const t = new THREE.CanvasTexture(c)
+  t.colorSpace = THREE.SRGBColorSpace
+  t.anisotropy = 4
+  m = new THREE.MeshPhysicalMaterial({ map: t, roughness: 0.3, clearcoat: 0.7, clearcoatRoughness: 0.2, envMapIntensity: 0.8 })
+  WRAP18.set(color, m)
+  return m
+}
+function Cell18650({ pos, dir, color }) {
+  return (
+    <group position={pos} rotation={[0, dir > 0 ? 0 : Math.PI, 0]}>
+      <mesh geometry={cell18650Geo()} material={mat(METAL.nickel, 1, 0.3)} castShadow />
+      <mesh geometry={cellWrap18650Geo()} material={wrap18650Mat(color)} castShadow />
+      {/* anel isolador branco à volta do botão + e os furos de ventilação */}
+      <mesh position={[3.236, 0, 0]} rotation={[0, 0, -Math.PI / 2]} geometry={geo('c18650ring', () => new THREE.RingGeometry(0.46, 0.84, 28).rotateX(-Math.PI / 2))} material={mat('#efefe8', 0, 0.6)} />
+      {[0, 1, 2, 3].map((k) => (
+        <Box key={k} size={[0.02, 0.08, 0.08]} pos={[3.24, Math.cos((k * Math.PI) / 2 + Math.PI / 4) * 0.62, Math.sin((k * Math.PI) / 2 + Math.PI / 4) * 0.62]} color="#2a2d30" />
+      ))}
+    </group>
+  )
+}
 export function BatteryModel({ part }) {
   const c = part.config?.charge ?? 90
-  const lab = useLabel([{ text: '3.7V 18650', font: 'bold 64px Arial' }], 512, 96)
+  const H = '#151515'
   return (
     <group>
-      <RBox size={[7.7, 0.25, 4.1]} r={0.06} pos={[0, 0.125, 0]} color="#151515" />
-      <RBox size={[7.7, 1.3, 0.2]} r={0.05} pos={[0, 0.65, -1.95]} color="#151515" />
-      <RBox size={[7.7, 1.3, 0.2]} r={0.05} pos={[0, 0.65, 1.95]} color="#151515" />
-      <RBox size={[0.25, 1.3, 4.1]} r={0.05} pos={[-3.73, 0.65, 0]} color="#151515" />
-      <RBox size={[0.25, 1.3, 4.1]} r={0.05} pos={[3.73, 0.65, 0]} color="#151515" />
-      {[-0.93, 0.93].map((z, i) => (
-        <group key={z}>
-          <Cyl r={0.9} h={6.5} pos={[0, 1.1, z]} rot={[0, 0, Math.PI / 2]} color={i ? '#1e8e3e' : '#1565c0'} rough={0.3} seg={32} />
-          <Cyl r={0.4} h={0.2} pos={[i ? -3.3 : 3.3, 1.1, z]} rot={[0, 0, Math.PI / 2]} color="#ddd" metal={0.9} rough={0.25} />
-          <Cyl r={0.5} h={0.05} pos={[i ? 3.55 : -3.55, 1.1, z]} rot={[0, 0, Math.PI / 2]} color="#c0c4c8" metal={0.9} rough={0.3} />
-        </group>
-      ))}
-      <mesh position={[0, 2.005, -0.93]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[3, 0.55]} />
-        <meshBasicMaterial map={lab} transparent />
-      </mesh>
-      <mesh position={[0, 2.005, 0.93]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[3, 0.55]} />
-        <meshBasicMaterial map={lab} transparent />
-      </mesh>
+      {/* suporte: fundo, paredes laterais baixas, topos e nervura entre as células */}
+      <RBox size={[7.7, 0.25, 4.1]} r={0.06} pos={[0, 0.125, 0]} color={H} rough={0.55} />
+      <RBox size={[7.7, 1.3, 0.2]} r={0.05} pos={[0, 0.65, -1.95]} color={H} rough={0.55} />
+      <RBox size={[7.7, 1.3, 0.2]} r={0.05} pos={[0, 0.65, 1.95]} color={H} rough={0.55} />
+      <RBox size={[0.25, 2.0, 4.1]} r={0.05} pos={[-3.73, 1.0, 0]} color={H} rough={0.55} />
+      <RBox size={[0.25, 2.0, 4.1]} r={0.05} pos={[3.73, 1.0, 0]} color={H} rough={0.55} />
+      <Box size={[7.2, 0.4, 0.1]} pos={[0, 0.45, 0]} color="#1d1d1d" rough={0.6} />
+      {[-0.93, 0.93].map((z, i) => {
+        const dir = i ? -1 : 1
+        return (
+          <group key={z}>
+            <Cell18650 pos={[-0.02 * dir, 1.1, z]} dir={dir} color={i ? '#1e7e3a' : '#1556b0'} />
+            <group position={[-dir * 3.6, 1.1, z]} scale={[1, 1.7, 1.7]}>
+              <Spring pos={[0, 0, 0]} dir={dir} len={0.33} />
+            </group>
+            <PlusTab wallX={dir * 3.605} y={1.1} z={z} dir={dir} tip={3.33} />
+            {/* polaridades moldadas em relevo nos topos */}
+            <Box size={[0.02, 0.07, 0.3]} pos={[dir * 3.856, 1.6, z]} color="#2c2c2c" />
+            <Box size={[0.02, 0.3, 0.07]} pos={[dir * 3.856, 1.6, z]} color="#2c2c2c" />
+            <Box size={[0.02, 0.07, 0.3]} pos={[-dir * 3.856, 1.6, z]} color="#2c2c2c" />
+          </group>
+        )
+      })}
+      {/* ponte em série (chapa niquelada no topo −x) */}
+      <Box size={[0.22, 0.03, 2.2]} pos={[-3.73, 2.015, 0]} color={METAL.nickel} metal={1} rough={0.35} />
       {/* fios de saída (+ vermelho, − preto) */}
       <Cyl r={0.08} h={0.6} pos={[3.95, 1.0, -0.6]} rot={[0, 0, Math.PI / 2]} color="#e53935" rough={0.45} />
       <Cyl r={0.08} h={0.6} pos={[3.95, 1.0, 0.6]} rot={[0, 0, Math.PI / 2]} color="#212121" rough={0.45} />
@@ -550,32 +650,61 @@ export function BatteryModel({ part }) {
 }
 
 // ---------- Regulador LM2596 ----------
+// Módulo azul "DC-DC step-down LM2596" (43 × 21 mm): LM2596S-5.0 em TO-263 com a aba soldada,
+// bobina blindada "330" de 33 µH, díodo Schottky SS34, condensadores eletrolíticos de entrada e
+// de saída, trimpot multivoltas azul 3296W, LED azul e as ilhas IN+/IN−/OUT+/OUT− com os pinos.
+const BUCK_T = 0.41
 export function BuckModel({ part }) {
-  const lab = useLabel([{ text: 'LM2596', font: 'bold 60px Arial' }], 256, 96)
+  const lab = useLabel([{ text: 'LM2596S-5.0', font: 'bold 54px Arial', y: 36 }, { text: 'P+ 2E3A', font: '36px Arial', y: 86 }], 256, 128)
+  const ind = useLabel([{ text: '330', font: 'bold 80px Arial' }], 128, 96)
+  const T = BUCK_T
   return (
     <group>
       <mesh position={[0, 0.33, 0]} castShadow geometry={geo('buckPcb', () => new RoundedBoxGeometry(4.3, 0.16, 2.1, 2, 0.03))} material={pcbMat('#1a4fb8')} />
       {[[-1.9, -0.8], [1.9, -0.8], [-1.9, 0.8], [1.9, 0.8]].map(([x, z], i) => (
         <Standoff key={i} x={x} z={z} h={0.25} />
       ))}
-      <Box size={[1.2, 0.45, 1.0]} pos={[0.2, 0.635, 0]} color="#2b2b2b" />
-      <Box size={[0.5, 0.05, 1.0]} pos={[0.2, 0.43, 0.75]} color="#c9ccd1" metal={0.9} />
-      <mesh position={[0.2, 0.862, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[1.0, 0.38]} />
-        <meshBasicMaterial map={lab} transparent />
+      {/* LM2596S (TO-263-5): corpo, aba de dissipação soldada e as 5 pernas */}
+      <group position={[-0.7, T, -0.55]}>
+        <Box size={[0.95, 0.03, 0.75]} pos={[0, 0.015, -0.05]} color={METAL.tin} metal={1} rough={0.3} />
+        <RBox size={[0.95, 0.42, 0.85]} r={0.03} pos={[0, 0.24, 0.05]} color="#1c1c1c" rough={0.45} />
+        <mesh position={[0, 0.452, 0.05]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[0.85, 0.42]} />
+          <meshBasicMaterial map={lab} transparent color="#cfcfcf" />
+        </mesh>
+        {[-2, -1, 0, 1, 2].map((k) => (
+          <Box key={k} size={[0.07, 0.05, 0.16]} pos={[k * 0.17, 0.05, 0.53]} color={METAL.tin} metal={1} rough={0.3} />
+        ))}
+      </group>
+      {/* bobina blindada "330" */}
+      <RBox size={[1.15, 0.65, 1.15]} r={0.12} pos={[0.3, T + 0.325, 0.42]} color="#202022" rough={0.55} />
+      <Cyl r={0.42} h={0.02} pos={[0.3, T + 0.655, 0.42]} color="#2a2a2c" rough={0.5} seg={28} />
+      <mesh position={[0.3, T + 0.667, 0.42]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[0.5, 0.36]} />
+        <meshBasicMaterial map={ind} transparent color="#d8d8d8" />
       </mesh>
-      <Cyl r={0.42} h={0.55} pos={[0.2, 0.68, -0.0]} color="#2e2e2e" rough={0.6} seg={8} />
-      <ECap pos={[-1.1, 0.41, 0.45]} r={0.4} h={0.9} color="#161616" stripe="#8d939a" />
-      <ECap pos={[1.3, 0.41, 0.45]} r={0.35} h={0.8} color="#161616" stripe="#8d939a" />
-      <Box size={[0.5, 0.5, 0.5]} pos={[1.3, 0.66, -0.5]} color="#2a62d8" />
-      <Cyl r={0.12} h={0.08} pos={[1.3, 0.93, -0.5]} color="#e0c46a" metal={0.85} rough={0.3} />
+      {/* díodo Schottky SS34 (SMA) com a risca do cátodo */}
+      <Box size={[0.45, 0.2, 0.28]} pos={[0.35, T + 0.1, -0.68]} color="#1a1a1a" rough={0.5} />
+      <Box size={[0.06, 0.205, 0.285]} pos={[0.2, T + 0.1, -0.68]} color="#9ea3a8" rough={0.5} />
+      {/* condensadores eletrolíticos de entrada e saída */}
+      <ECap pos={[-1.2, T, 0.45]} r={0.4} h={0.9} color="#161616" stripe="#8d939a" />
+      <ECap pos={[1.3, T, 0.45]} r={0.35} h={0.8} color="#161616" stripe="#8d939a" />
+      {/* trimpot multivoltas 3296W (azul, parafuso de latão em cima) */}
+      <RBox size={[0.95, 0.95, 0.48]} r={0.04} pos={[1.15, T + 0.475, -0.55]} color="#2a62d8" rough={0.45} />
+      <Cyl r={0.11} h={0.08} pos={[1.48, T + 0.99, -0.55]} color="#e0c46a" metal={0.85} rough={0.3} seg={16} />
+      <Box size={[0.18, 0.02, 0.03]} pos={[1.48, T + 1.035, -0.55]} color="#6b5a20" />
+      {/* ilhas de entrada/saída com os pinos */}
       {['IN+', 'IN-', 'OUT+', 'OUT-'].map((_, i) => (
         <group key={i}>
           <Cyl r={0.16} h={0.03} pos={[i < 2 ? -1.95 : 1.95, 0.42, i % 2 ? 0.6 : -0.6]} color="#d4af37" metal={0.85} rough={0.3} seg={14} />
           <Cyl r={0.06} h={0.34} pos={[i < 2 ? -1.95 : 1.95, 0.58, i % 2 ? 0.6 : -0.6]} color="#c9a24a" metal={0.8} seg={8} />
         </group>
       ))}
-      <GlowLed pos={[-0.6, 0.44, -0.7]} color="#3366ff" read={() => (powered(part.id) ? 1 : 0)} />
+      <SilkText lines={[{ text: 'IN+', font: 'bold 44px Arial', y: 20 }, { text: 'IN-', font: 'bold 44px Arial', y: 108 }]} px={[128, 128]} pos={[-1.62, T + 0.002, 0]} w={0.3} d={1.2} />
+      <SilkText lines={[{ text: 'OUT+', font: 'bold 40px Arial', y: 20 }, { text: 'OUT-', font: 'bold 40px Arial', y: 108 }]} px={[128, 128]} pos={[1.75, T + 0.002, 0]} w={0.36} d={1.2} />
+      {/* LED azul (SMD) com a resistência */}
+      <GlowLed pos={[-1.5, 0.44, -0.3]} color="#3366ff" read={() => (powered(part.id) ? 1 : 0)} />
+      <Smd pos={[-1.5, T, -0.62]} len={0.18} wid={0.1} h={0.05} />
     </group>
   )
 }
@@ -698,6 +827,87 @@ export function L298NModel({ part }) {
   )
 }
 
+// ---------- roda do motor TT (65 mm): pneu de borracha e jante amarela de 6 raios ----------
+// Eixo da roda = z local (centro na origem). Pneu de revolução com flancos arredondados e piso de
+// blocos alternados; jante com aro, 6 raios e janelas abertas entre eles (vê-se através), cubo com
+// o furo em D do veio do motor.
+function TtWheel({ R, W, rim }) {
+  const Ri = R * 0.7 // raio do aro da jante (onde assenta o pneu)
+  const tire = geo(`ttTire${R},${W}`, () => {
+    const hw = W / 2
+    const sh = Math.min(0.32, hw * 0.45) // raio do ombro
+    // perfil: flanco (−z) → ombro arredondado → piso → ombro → flanco (+z)
+    const prof = [[Ri, -hw * 0.9], [Ri + 0.08, -hw]]
+    for (let i = 0; i <= 6; i++) {
+      const a = (i / 6) * (Math.PI / 2)
+      prof.push([R - sh + Math.sin(a) * sh, -hw + sh - Math.cos(a) * sh])
+    }
+    for (let i = 0; i <= 6; i++) {
+      const a = (i / 6) * (Math.PI / 2)
+      prof.push([R - sh + Math.cos(a) * sh, hw - sh + Math.sin(a) * sh])
+    }
+    prof.push([Ri + 0.08, hw], [Ri, hw * 0.9])
+    return new THREE.LatheGeometry(prof.map(([r, y]) => new THREE.Vector2(r, y)), 72).rotateX(Math.PI / 2)
+  })
+  // piso: blocos (lugs) alternados, metade de cada lado, desencontrados
+  const lugs = mergedGeo(`ttLugs${R},${W}`, () => {
+    const out = []
+    const n = 22
+    const lug = geo(`ttLug${W}`, () => new RoundedBoxGeometry(0.11, Math.min(0.42, R * 0.13), W * 0.4, 1, 0.03))
+    for (let i = 0; i < n; i++) {
+      for (const s of [-1, 1]) {
+        const a = ((i + (s > 0 ? 0.5 : 0)) / n) * Math.PI * 2
+        out.push([lug, [Math.cos(a) * (R + 0.03), Math.sin(a) * (R + 0.03), s * W * 0.22], [0, 0, a]])
+      }
+    }
+    return out
+  })
+  // jante: disco de 6 raios com janelas (forma extrudida), aro e cubo
+  const disc = geo(`ttDisc${R}`, () => {
+    const s = new THREE.Shape()
+    s.absarc(0, 0, Ri - 0.02, 0, Math.PI * 2, false)
+    const r0 = 0.72
+    const r1 = Ri - 0.24
+    const gap = 0.2 // meia largura angular dos raios
+    for (let k = 0; k < 6; k++) {
+      const a0 = (k / 6) * Math.PI * 2 + gap
+      const a1 = ((k + 1) / 6) * Math.PI * 2 - gap
+      const h = new THREE.Path()
+      h.absarc(0, 0, r1, a0, a1, false)
+      h.absarc(0, 0, r0, a1, a0, true)
+      h.closePath()
+      s.holes.push(h)
+    }
+    s.holes.push(new THREE.Path().absarc(0, 0, 0.16, 0, Math.PI * 2, true))
+    const g = new THREE.ExtrudeGeometry(s, { depth: 0.16, bevelEnabled: true, bevelThickness: 0.03, bevelSize: 0.03, bevelSegments: 2, curveSegments: 40 })
+    g.translate(0, 0, -0.08)
+    return g
+  })
+  const rimRing = geo(`ttRimRing${R},${W}`, () => new THREE.CylinderGeometry(Ri, Ri, W * 0.86, 56, 1, true).rotateX(Math.PI / 2))
+  const rimLip = geo(`ttRimLip${R}`, () => new THREE.TorusGeometry(Ri - 0.04, 0.06, 8, 56))
+  const rimMat = mat(rim, 0, 0.42, { side: THREE.DoubleSide })
+  return (
+    <group>
+      <mesh castShadow receiveShadow geometry={tire} material={mat('#161616', 0, 0.92)} />
+      <mesh castShadow geometry={lugs} material={mat('#1d1d1d', 0, 0.9)} />
+      <mesh geometry={rimRing} material={rimMat} />
+      {[-1, 1].map((s) => (
+        <mesh key={s} position={[0, 0, (s * W * 0.43)]} geometry={rimLip} material={mat(rim, 0, 0.42)} />
+      ))}
+      {/* disco dos raios, rebaixado do lado de fora (−z) como nas rodas TT */}
+      <mesh position={[0, 0, -W * 0.18]} castShadow geometry={disc} material={mat(rim, 0, 0.42)} />
+      {/* cubo com o furo em D */}
+      <mesh rotation={[Math.PI / 2, 0, 0]} geometry={geo(`ttHub${W}`, () => new THREE.CylinderGeometry(0.42, 0.46, W * 0.7, 32))} material={mat(rim, 0, 0.4)} />
+      <mesh position={[0, 0, -W * 0.35 - 0.002]} geometry={geo('ttDHole', () => {
+        const s = new THREE.Shape()
+        s.absarc(0, 0, 0.27, -1.1, Math.PI + 1.1, false)
+        s.closePath()
+        return new THREE.ShapeGeometry(s, 16)
+      })} rotation={[0, Math.PI, 0]} material={mat('#3a2c08', 0, 0.8)} />
+    </group>
+  )
+}
+
 // ---------- Motor TT + roda (roda sempre do lado −z local) ----------
 // Caixa redutora amarela, motor metálico atrás (−x) com as patilhas de solda na tampa.
 export function MotorModel({ part }) {
@@ -746,26 +956,7 @@ export function MotorModel({ part }) {
         </group>
       )}
       <group ref={wh.disc ? undefined : wheel} position={[0, Ra, wheelZ]} visible={!wh.disc}>
-        {/* pneu com flancos arredondados e piso */}
-        <mesh rotation={[Math.PI / 2, 0, 0]} castShadow geometry={geo(`tire${R},${W}`, () => new THREE.CylinderGeometry(R, R, Math.max(0.2, W - 0.5), 48))} material={mat('#1b1b1b', 0, 0.95)} />
-        {[-1, 1].map((s) => (
-          <mesh key={s} position={[0, 0, (s * Math.max(0.2, W - 0.5)) / 2]} geometry={geo(`tireSide${R}`, () => new THREE.TorusGeometry(R - 0.25, 0.25, 10, 48))} material={mat('#1b1b1b', 0, 0.95)} castShadow />
-        ))}
-        {[-1, 1].map((s) => (
-          <mesh key={`w${s}`} position={[0, 0, (s * W) / 2]} rotation={[Math.PI / 2, 0, 0]} geometry={geo(`tireWall${R}`, () => new THREE.CylinderGeometry(R - 0.25, R - 0.25, 0.02, 48))} material={mat('#222', 0, 0.9)} />
-        ))}
-        {/* jante amarela com raios */}
-        <mesh rotation={[Math.PI / 2, 0, 0]} geometry={geo(`rim${R},${W}`, () => new THREE.CylinderGeometry(R * 0.66, R * 0.66, W + 0.08, 36))} material={mat(part.config?.wheelColor || wh.rim, 0, 0.45)} />
-        {Array.from({ length: 6 }).map((_, i) => (
-          <mesh key={i} rotation={[0, 0, (i * Math.PI) / 3]} position={[0, 0, -(W / 2 + 0.06)]} geometry={geo(`spoke${R}`, () => new THREE.BoxGeometry(R * 1.25, 0.32, 0.12))} material={mat('#d9a514', 0, 0.5)} />
-        ))}
-        <Cyl r={0.45} h={W + 0.3} rot={[Math.PI / 2, 0, 0]} color="#e0b010" rough={0.45} />
-        {Array.from({ length: 20 }).map((_, i) => {
-          const a = (i / 20) * Math.PI * 2
-          return (
-            <mesh key={`t${i}`} position={[Math.cos(a) * (R + 0.01), Math.sin(a) * (R + 0.01), 0]} rotation={[0, 0, a]} geometry={geo(`tread${W}`, () => new THREE.BoxGeometry(0.1, 0.32, W * 0.82))} material={mat('#2c2c2c', 0, 0.9)} />
-          )
-        })}
+        <TtWheel R={R} W={W} rim={part.config?.wheelColor || wh.rim} />
       </group>
     </group>
   )
@@ -774,6 +965,35 @@ export function MotorModel({ part }) {
 // ---------- Servos ----------
 // (exportado: os micro servos do grupo G reaproveitam o corpo; dims.angleOf(id) dá o ângulo
 // de servos que não são do engine — ex.: rotação contínua via live.mountAngle)
+// SG90: caixa de plástico azul (opaca, a pedido: a translúcida confundia a vista); MG90S/MG996R:
+// caixa preta. Tampa com a cúpula da engrenagem de saída e o ressalto da
+// engrenagem intermédia, estriado de saída, orelhas com os furos (ilhós de borracha e casquilhos
+// de latão no MG996R), etiqueta lateral, parafusos por baixo, braço em cruz com os furos, cabo
+// castanho/vermelho/laranja e ficha fêmea de 3 vias.
+const hornArmGeo = (len, r0, r1, t) =>
+  geo(`servoArm${len},${r0},${r1},${t}`, () => {
+    const s = new THREE.Shape()
+    s.moveTo(0, r0)
+    s.lineTo(len, r1)
+    s.absarc(len, 0, r1, Math.PI / 2, -Math.PI / 2, true)
+    s.lineTo(0, -r0)
+    s.absarc(0, 0, r0, -Math.PI / 2, Math.PI / 2, true)
+    const g = new THREE.ExtrudeGeometry(s, { depth: t, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.015, bevelSegments: 1, curveSegments: 10 })
+    g.translate(0, 0, -t / 2)
+    g.rotateX(-Math.PI / 2)
+    return g
+  })
+// furos dos braços (discos escuros num só desenho, em cima)
+const hornHolesGeo = (pts) => mergedGeo(`servoHornHoles${pts.join(';')}`, () => pts.map(([x, z]) => [geo('servoHole', () => new THREE.CircleGeometry(0.035, 10).rotateX(-Math.PI / 2)), [x, 0, z]]))
+const HORN_HOLES = [[0.45, 0], [0.75, 0], [1.05, 0], [1.35, 0], [0, 0.42], [0, 0.62], [0, -0.42], [0, -0.62], [-0.4, 0]]
+// estriado da saída (dentes à volta do veio)
+const splineGeo = (r, n) =>
+  mergedGeo(`servoSpline${r},${n}`, () =>
+    Array.from({ length: n }, (_, i) => {
+      const a = (i / n) * Math.PI * 2
+      return [geo('gull', () => new THREE.BoxGeometry(1, 1, 1)), [Math.cos(a) * r, 0, Math.sin(a) * r], [0, -a, 0], [0.025, 1, 0.022]]
+    }),
+  )
 export function ServoBody({ part, dims }) {
   const { L, H, W, hornX, tabY, color, label, metalGear } = dims
   const big = L > 3 // MG996R e afins: orelhas com 2 furos, ilhós de borracha e casquilhos de latão
@@ -796,15 +1016,17 @@ export function ServoBody({ part, dims }) {
   // engrenagem/polia/roda no veio ou peça do grupo Materiais no braço: o braço deixa de se ver
   const noHorn = useStore((st) => st.parts.some((q) => q.parent?.id === part.id && q.parent.mount === 'horn' && hidesHorn(q.type)))
   const seam = mat('#000000', 0, 0.8, { transparent: true, opacity: 0.35, depthWrite: false })
+  // plástico da caixa (opaco em todos os servos)
+  const shell = mat(color, 0, 0.32)
   const holes = big ? [-0.27, 0.27].map((z) => z * W * 1.3) : [0]
   return (
     <group>
       {/* caixa em 3 partes (tampa, corpo, fundo): juntas marcadas por uma linha escura */}
-      <RBox size={[L, H, W]} r={0.06} pos={[0, H / 2, 0]} color={color} rough={0.32} />
+      <mesh position={[0, H / 2, 0]} geometry={geo(`servoShell${L},${H},${W}`, () => new RoundedBoxGeometry(L, H, W, 2, 0.06))} material={shell} castShadow receiveShadow />
       {[H * 0.12, tabY + 0.2, H - 0.06].map((y) => (
         <mesh key={y} position={[0, y, 0]} geometry={geo(`servoSeam${L},${W}`, () => new THREE.BoxGeometry(L + 0.006, 0.018, W + 0.006))} material={seam} />
       ))}
-      <RBox size={[L + 1.0, 0.25, W]} r={0.04} pos={[0, tabY, 0]} color={color} rough={0.32} />
+      <mesh position={[0, tabY, 0]} geometry={geo(`servoTabs${L},${W}`, () => new RoundedBoxGeometry(L + 1.0, 0.25, W, 2, 0.04))} material={shell} castShadow />
       {[-1, 1].map((s) =>
         holes.map((z) => (
           <group key={`${s}${z}`} position={[s * (L / 2 + 0.27), tabY, z]}>
@@ -829,25 +1051,33 @@ export function ServoBody({ part, dims }) {
       {/* etiqueta lateral */}
       <mesh position={[0, H * 0.55, W / 2 + 0.002]}>
         <planeGeometry args={[L * 0.9, L * 0.22]} />
-        <meshBasicMaterial map={tex} transparent />
+        <meshStandardMaterial map={tex} transparent roughness={0.45} polygonOffset polygonOffsetFactor={-2} />
       </mesh>
       {/* parafusos compridos que fecham a caixa (por baixo) */}
-      {[-1, 1].map((s) => (
-        <Cyl key={`p${s}`} r={0.07} h={0.02} pos={[s * (L / 2 - 0.15), -0.005, s * (W / 2 - 0.15)]} color={METAL.nickel} metal={1} rough={0.35} seg={10} />
-      ))}
-      {/* tampa das engrenagens */}
-      <Cyl r={W * 0.48} h={0.35} pos={[hornX, H + 0.17, 0]} color={color} rough={0.4} seg={28} />
+      {[-1, 1].flatMap((s) =>
+        [-1, 1].map((t) => (
+          <group key={`p${s}${t}`} position={[s * (L / 2 - 0.15), -0.005, t * (W / 2 - 0.15)]}>
+            <Cyl r={0.07} h={0.02} color={METAL.nickel} metal={1} rough={0.35} seg={10} />
+            <Box size={[0.1, 0.012, 0.02]} pos={[0, -0.006, 0]} color="#2a2d30" />
+          </group>
+        )),
+      )}
+      {/* tampa das engrenagens: cúpula da saída e ressalto da engrenagem intermédia */}
+      <Cyl r={W * 0.48} r2={W * 0.5} h={0.35} pos={[hornX, H + 0.17, 0]} color={color} rough={0.35} seg={28} />
       <Cyl r={W * 0.26} h={0.25} pos={[hornX - W * 0.5, H + 0.12, 0]} color={color} rough={0.4} seg={20} />
       <Cyl r={0.13} h={0.3} pos={[hornX, H + 0.42, 0]} color={metalGear ? '#d4af37' : '#f0f0f0'} metal={metalGear ? 0.8 : 0} rough={0.4} seg={12} />
-      {/* braço do servo (roda com o ângulo) */}
+      <mesh position={[hornX, H + 0.42, 0]} scale={[1, 0.3, 1]} geometry={splineGeo(0.13, big ? 25 : 21)} material={mat(metalGear ? '#c9a23a' : '#e6e6e6', metalGear ? 0.8 : 0, 0.4)} />
+      {/* braço do servo em cruz (roda com o ângulo) */}
       <group ref={horn} position={[hornX, H + 0.45, 0]} visible={!noHorn}>
         <Cyl r={0.34} h={0.16} color="#f5f5f5" rough={0.5} />
         <Cyl r={0.1} h={0.02} pos={[0, 0.085, 0]} color={METAL.nickel} metal={1} rough={0.35} seg={12} />
-        <RBox size={[1.75, 0.13, 0.42]} r={0.05} pos={[0.72, 0, 0]} color="#f5f5f5" rough={0.5} />
-        <RBox size={[0.42, 0.13, 1.45]} r={0.05} pos={[0, 0, 0]} color="#f5f5f5" rough={0.5} />
-        {[0.45, 0.8, 1.15, 1.5].map((x) => (
-          <Cyl key={x} r={0.04} h={0.14} pos={[x, 0, 0]} color="#7a7a7a" seg={8} />
-        ))}
+        <Box size={[0.12, 0.012, 0.025]} pos={[0, 0.097, 0]} color="#2a2d30" />
+        <Box size={[0.025, 0.012, 0.12]} pos={[0, 0.097, 0]} color="#2a2d30" />
+        <mesh geometry={hornArmGeo(1.55, 0.22, 0.11, 0.12)} material={mat('#f5f5f5', 0, 0.5)} castShadow />
+        <mesh rotation={[0, Math.PI / 2, 0]} geometry={hornArmGeo(0.68, 0.2, 0.11, 0.12)} material={mat('#f5f5f5', 0, 0.5)} castShadow />
+        <mesh rotation={[0, -Math.PI / 2, 0]} geometry={hornArmGeo(0.68, 0.2, 0.11, 0.12)} material={mat('#f5f5f5', 0, 0.5)} castShadow />
+        <mesh rotation={[0, Math.PI, 0]} geometry={hornArmGeo(0.42, 0.2, 0.12, 0.12)} material={mat('#f5f5f5', 0, 0.5)} castShadow />
+        <mesh position={[0, 0.077, 0]} geometry={hornHolesGeo(HORN_HOLES)} material={mat('#6f6f6f', 0, 0.8)} />
       </group>
       {/* cabo (castanho, vermelho, laranja) e ficha fêmea de 3 vias: a face de trás (−x) é onde entra o jumper */}
       {pins.map((p, i) => (
@@ -862,7 +1092,7 @@ export function ServoBody({ part, dims }) {
 }
 const p0 = (pins) => pins[0].pos[0]
 const servoPins = (type) => DEFS[type].pins
-export const ServoModel = ({ part }) => <ServoBody part={part} dims={{ L: 2.3, H: 2.27, W: 1.22, hornX: 0.55, tabY: 1.6, color: '#2a62d8', label: 'SG90', pinX: -2.3 }} />
+export const ServoModel = ({ part }) => <ServoBody part={part} dims={{ L: 2.3, H: 2.27, W: 1.22, hornX: 0.55, tabY: 1.6, color: '#2f6fe0', label: 'SG90', pinX: -2.3 }} />
 export const ServoMGModel = ({ part }) => <ServoBody part={part} dims={{ L: 4.07, H: 3.75, W: 1.98, hornX: 1.0, tabY: 2.75, color: '#151515', label: 'MG996R', pinX: -3.4, metalGear: true }} />
 
 // ---------- Garra ----------
@@ -1020,59 +1250,173 @@ export function IRModel({ part }) {
 // (VCC, Trig, Echo, GND), ou em ângulo reto / a 45° para trás (config.pinosDir, shared/sonar.js).
 // Com os pinos para baixo a placa fica 0,6 cm acima das pontas; nas outras assenta na mesa.
 export function SonarModel({ part }) {
-  const tex = useLabel([{ text: 'HC-SR04', font: 'bold 60px Arial' }], 512, 128)
-  const tr = useLabel([{ text: 'T', font: 'bold 80px Arial', x: 30 }, { text: 'Vcc  Trig  Echo  Gnd', font: 'bold 38px Arial' }, { text: 'R', font: 'bold 80px Arial', x: 482 }], 512, 128)
-  const mesh = useCanvasTexture(
+  // serigrafia da face da frente (4,5 × 2 cm, 200 px/cm): "T"/"R" nos cantos de baixo,
+  // "HC-SR04" por baixo do cristal, "Y1", e Vcc/Trig/Echo/Gnd na vertical por cima de cada pino.
+  // u = 0 é o lado +z (esquerda, vista de frente), v = 0 o bordo de cima.
+  const silk = useCanvasTexture(
     (ctx, w, h) => {
-      ctx.fillStyle = '#0d0d0d'
-      ctx.fillRect(0, 0, w, h)
-      ctx.strokeStyle = '#8a8d91'
-      ctx.lineWidth = 2.2
-      for (let i = 0; i < w; i += 8) {
+      ctx.clearRect(0, 0, w, h)
+      ctx.fillStyle = '#f4f6f8'
+      ctx.strokeStyle = '#f4f6f8'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      const px = (z) => (2.25 - z) * 200
+      const py = (y) => (2.0 - y) * 200
+      // pistas de cobre sob a máscara (azul mais claro), como se veem na placa real: dos pinos
+      // para cima, à volta do cristal e por baixo das latas
+      ctx.save()
+      ctx.strokeStyle = 'rgba(120, 175, 255, 0.32)'
+      ctx.lineCap = 'round'
+      ctx.lineJoin = 'round'
+      ctx.lineWidth = 7
+      const tr = (pts) => {
         ctx.beginPath()
-        ctx.moveTo(i, 0)
-        ctx.lineTo(i, h)
-        ctx.moveTo(0, i)
-        ctx.lineTo(w, i)
+        pts.forEach(([z, y], i) => (i ? ctx.lineTo(px(z), py(y)) : ctx.moveTo(px(z), py(y))))
         ctx.stroke()
       }
+      SONAR_ZS.forEach((z, i) => tr([[z, 0.37], [z, 0.95], [z + (i < 2 ? 0.08 : -0.08) * (i % 2 ? 1 : 2), 1.25], [z * 0.7, 1.45]]))
+      tr([[0.55, 1.95], [0.55, 1.62], [0.35, 1.45]])
+      tr([[-0.55, 1.95], [-0.55, 1.62], [-0.35, 1.45]])
+      tr([[0.45, 1.05], [0.6, 0.6], [0.6, 0.15], [1.2, 0.08]])
+      tr([[-0.45, 1.05], [-0.6, 0.6], [-0.6, 0.15], [-1.2, 0.08]])
+      tr([[1.05, 1.95], [1.25, 1.75], [1.9, 1.75]])
+      tr([[-1.05, 1.95], [-1.25, 1.75], [-1.9, 1.75]])
+      ctx.lineWidth = 5
+      tr([[0.2, 1.62], [0.2, 1.3]])
+      tr([[-0.2, 1.62], [-0.2, 1.3]])
+      ctx.restore()
+      // vias (pontos brancos/estanhados)
+      ctx.fillStyle = '#e9edf2'
+      for (const [z, y] of [[0.58, 1.9], [-0.58, 1.9], [0.35, 1.47], [-0.35, 1.47], [1.2, 0.08], [-1.2, 0.08], [0.2, 1.3], [-0.2, 1.3], [1.92, 1.75], [-1.92, 1.75]]) {
+        ctx.beginPath()
+        ctx.arc(px(z), py(y), 7, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.fillStyle = '#f4f6f8'
+      // "T"/"R" no canto de baixo, por baixo das latas
+      ctx.font = 'bold 46px Arial'
+      ctx.fillText('T', px(1.9), py(0.14))
+      ctx.fillText('R', px(-1.9), py(0.14))
+      ctx.font = 'bold 50px Arial'
+      ctx.fillText('HC-SR04', px(0), py(1.08))
+      ctx.font = 'bold 28px Arial'
+      ctx.fillText('Y1', px(0.42), py(1.38))
+      ;['VCC', 'Trig', 'Echo', 'GND'].forEach((t, i) => {
+        ctx.save()
+        ctx.translate(px(SONAR_ZS[i]), py(0.66))
+        ctx.rotate(-Math.PI / 2)
+        ctx.font = 'bold 30px Arial'
+        ctx.fillText(t, 0, 0)
+        ctx.restore()
+      })
+      // contorno da barra de pinos (à volta dos 4 pads)
+      ctx.strokeStyle = '#f4f6f8'
+      ctx.lineWidth = 5
+      ctx.strokeRect(px(0.53), py(0.5), px(-0.53) - px(0.53), py(0.22) - py(0.5))
     },
-    ['sonar-mesh-2'],
-    256,
-    256,
+    ['sonar-silk-4'],
+    900,
+    400,
+  )
+  const mesh = useCanvasTexture(
+    (ctx, w, h) => {
+      // por trás da rede: o fundo escuro da lata e, ao centro, o cone do piezo (mais claro)
+      ctx.fillStyle = '#121315'
+      ctx.fillRect(0, 0, w, h)
+      const g = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w * 0.34)
+      g.addColorStop(0, '#5d6570')
+      g.addColorStop(0.6, '#33383f')
+      g.addColorStop(1, 'rgba(18, 19, 21, 0)')
+      ctx.fillStyle = g
+      ctx.fillRect(0, 0, w, h)
+      // rede metálica tecida fina (~0,3 mm de passo: ~50 fios no Ø 15 mm), fios cinzento-escuros
+      const n = 50
+      const sp = w / n
+      ctx.lineWidth = sp * 0.3
+      ctx.strokeStyle = 'rgba(96, 102, 110, 0.9)'
+      for (let i = 0; i <= n; i++) {
+        const v = i * sp
+        ctx.beginPath()
+        ctx.moveTo(v, 0)
+        ctx.lineTo(v, h)
+        ctx.moveTo(0, v)
+        ctx.lineTo(w, v)
+        ctx.stroke()
+      }
+      // sombra junto ao aro (a rede está recuada dentro da lata)
+      const e = ctx.createRadialGradient(w / 2, h / 2, w * 0.36, w / 2, h / 2, w * 0.5)
+      e.addColorStop(0, 'rgba(0,0,0,0)')
+      e.addColorStop(1, 'rgba(0,0,0,0.75)')
+      ctx.fillStyle = e
+      ctx.fillRect(0, 0, w, h)
+    },
+    ['sonar-mesh-6'],
+    512,
+    512,
   )
   const pins = DEFS.hcsr04.pins
   const mode = sonarMode(part?.config)
   const pb = sonarPcbY(part?.config)
   const Y = pb - 0.2 // as medidas abaixo são do bordo de baixo da placa a 0,2 cm
+  const yc = 1.15 + Y // centro dos transdutores
+  // furos de montagem nos 4 cantos (Ø 2 mm, anel estanhado) nas duas faces
+  const holes = [-1, 1].flatMap((sz) => [0.2, 1.8].map((y) => [sz * 2.05, pb + y]))
   return (
     <group>
       <mesh position={[0, 1.2 + Y, 0]} castShadow geometry={geo('sonarPcb', () => new RoundedBoxGeometry(0.16, 2.0, 4.5, 2, 0.03))} material={pcbMat('#1a4fb8')} />
-      <mesh position={[0.085, 2.0 + Y, 0]} rotation={[0, Math.PI / 2, 0]}>
-        <planeGeometry args={[1.8, 0.45]} />
-        <meshBasicMaterial map={tex} transparent />
+      <mesh position={[0.0815, 1.2 + Y, 0]} rotation={[0, Math.PI / 2, 0]}>
+        <planeGeometry args={[4.5, 2.0]} />
+        <meshStandardMaterial map={silk} transparent roughness={0.6} polygonOffset polygonOffsetFactor={-2} />
       </mesh>
-      <mesh position={[0.085, 0.45 + Y, 0]} rotation={[0, Math.PI / 2, 0]}>
-        <planeGeometry args={[4.2, 0.35]} />
-        <meshBasicMaterial map={tr} transparent />
-      </mesh>
-      {[-1.3, 1.3].map((z) => (
-        <group key={z}>
-          {/* lata de alumínio com o bordo enrolado; rede metálica recuada sobre feltro preto */}
-          <Cyl r={0.8} h={1.2} pos={[0.68, 1.15 + Y, z]} rot={[0, 0, Math.PI / 2]} color={METAL.alu} metal={1} rough={0.38} seg={40} />
-          <mesh position={[1.27, 1.15 + Y, z]} rotation={[0, Math.PI / 2, 0]} geometry={geo('sonarLip', () => new THREE.TorusGeometry(0.74, 0.06, 8, 40))} material={mat(METAL.alu, 1, 0.3)} />
-          <Cyl r={0.82} h={0.08} pos={[0.12, 1.15 + Y, z]} rot={[0, 0, Math.PI / 2]} color="#1a1a1a" rough={0.7} seg={32} />
-          <mesh position={[1.284, 1.15 + Y, z]} rotation={[0, Math.PI / 2, 0]}>
-            <circleGeometry args={[0.7, 32]} />
-            <meshStandardMaterial map={mesh} roughness={0.55} metalness={0.6} />
-          </mesh>
+      {[1, -1].map((s) => (
+        <group key={s}>
+          <mesh geometry={mergedGeo(`sonarHoleRing${s},${pb}`, () => holes.map(([z, y]) => [geo('sonarRing', () => new THREE.RingGeometry(0.1, 0.17, 20)), [s * 0.083, y, z], [0, (s * Math.PI) / 2, 0]]))} material={mat(METAL.tin, 1, 0.3)} />
+          <mesh geometry={mergedGeo(`sonarHoleIn${s},${pb}`, () => holes.map(([z, y]) => [geo('sonarHoleD', () => new THREE.CircleGeometry(0.1, 20)), [s * 0.084, y, z], [0, (s * Math.PI) / 2, 0]]))} material={mat('#0b0d10', 0, 0.9)} />
         </group>
       ))}
-      {/* atrás: cristal e circuitos */}
-      <RBox size={[0.2, 0.36, 0.95]} r={0.08} pos={[-0.18, 1.95 + Y, 0]} color="#d3d6da" metal={0.9} rough={0.25} />
-      {[-1.3, 0, 1.3].map((z) => (
-        <Box key={z} size={[0.12, 0.5, 0.4]} pos={[-0.14, 1.15 + Y, z]} color="#151515" />
+      {[-1.3, 1.3].map((z) => (
+        <group key={z}>
+          {/* transdutor (Ø 16 × 12 mm): lata de alumínio com o aro enrolado à frente e a rede
+              metálica um pouco recuada; anel de feltro preto na base, contra a placa */}
+          {/* tubo de alumínio ABERTO à frente (parede de 0,4 mm): por fora acetinado, por dentro
+              vê-se a parede prateada até à rede, que fica funda (~5 mm abaixo do rebordo) */}
+          <mesh position={[0.72, yc, z]} rotation={[0, 0, Math.PI / 2]} castShadow geometry={geo('sonarTubeOut', () => new THREE.CylinderGeometry(0.8, 0.8, 1.12, 56, 1, true))} material={mat('#dde1e6', 0.85, 0.36)} />
+          <mesh position={[1.19, yc, z]} rotation={[0, 0, Math.PI / 2]} geometry={geo('sonarTubeIn2', () => new THREE.CylinderGeometry(0.76, 0.76, 0.18, 56, 1, true))} material={mat('#c9ced4', 0.85, 0.3, { side: THREE.BackSide })} />
+          {/* rebordo enrolado na boca do tubo */}
+          <mesh position={[1.28, yc, z]} rotation={[0, Math.PI / 2, 0]} geometry={geo('sonarLip3', () => new THREE.TorusGeometry(0.78, 0.028, 8, 56))} material={mat('#eef1f4', 0.85, 0.24)} />
+          {/* rede metálica ~2 mm abaixo do rebordo, com o cone do piezo por trás */}
+          <mesh position={[1.1, yc, z]} rotation={[0, Math.PI / 2, 0]}>
+            <circleGeometry args={[0.76, 56]} />
+            <meshStandardMaterial map={mesh} roughness={0.55} metalness={0.45} />
+          </mesh>
+          <Cyl r={0.82} h={0.08} pos={[0.12, yc, z]} rot={[0, 0, Math.PI / 2]} color="#1a1a1a" rough={0.7} seg={32} />
+        </group>
       ))}
+      {/* cristal HC-49/S deitado na face da frente, em cima ao meio, entre os transdutores */}
+      <group position={[0.08, pb + 1.68, 0]} rotation={[0, 0, -Math.PI / 2]}>
+        <Crystal pos={[0, 0, 0]} rotY={Math.PI / 2} l={1.1} h={0.36} d={0.44} />
+        {/* frequência gravada na tampa: 4.000 (MHz) */}
+        <SilkText text="4.000" pos={[0, 0.413, 0]} w={0.8} d={0.24} rotY={Math.PI / 2} color="#4b5057" font="bold 46px Arial" />
+      </group>
+      {/* pads dos 4 pinos na frente: quadrado no VCC, redondos nos outros */}
+      <mesh geometry={mergedGeo(`sonarPads${pb}`, () => SONAR_ZS.map((z, i) => [i === 0 ? geo('sonarPadSq', () => new THREE.PlaneGeometry(0.17, 0.17)) : geo('sonarPadRd', () => new THREE.CircleGeometry(0.085, 18)), [0.0825, pb + 0.37, z], [0, Math.PI / 2, 0]]))} material={mat(METAL.tin, 1, 0.3)} />
+      {/* soldas dos 4 pinos na face da frente (o pino atravessa a placa por cima do bordo) */}
+      {pins.map((p) => (
+        <mesh key={`s${p.id}`} position={[0.08, pb + 0.37, p.pos[2]]} rotation={[0, 0, -Math.PI / 2]} geometry={geo('sonarSolder', () => new THREE.SphereGeometry(0.075, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2))} material={mat(METAL.tin, 1, 0.3)} />
+      ))}
+      {/* face de trás: os 3 CIs SMD (driver MAX232/TC4427, amplificador LM324/TL074 e o
+          microcontrolador) e os passivos à volta */}
+      <group position={[-0.08, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
+        <Chip pos={[pb + 1.0, 0, 1.25]} size={[0.62, 0.15, 1.0]} n={8} label="" />
+        <Chip pos={[pb + 1.05, 0, 0]} size={[0.62, 0.15, 0.88]} n={7} label="" />
+        <Chip pos={[pb + 1.0, 0, -1.3]} size={[0.62, 0.15, 1.0]} n={8} label="" />
+        {[
+          [0.45, 1.85], [0.45, 1.6], [0.45, 0.75], [0.45, 0.5], [1.75, 1.7], [1.75, 0.6], [1.75, 0.35], [1.75, -0.4], [1.75, -0.65],
+          [0.45, -0.6], [0.45, -0.85], [0.45, -1.7], [0.45, -1.95], [1.75, -1.6], [1.75, -1.9], [1.55, 1.95], [1.0, 0.62], [1.0, -0.62],
+        ].map(([y, z], i) => (
+          <Smd key={i} pos={[pb + y, 0, z]} rotY={i % 3 ? 0 : Math.PI / 2} color={i % 4 === 1 ? '#8a6a48' : '#1c1c1c'} />
+        ))}
+      </group>
       {/* barra de 4 pinos: plástico preto encostado atrás da placa, no bordo de baixo */}
       <Box size={[0.25, 0.25, 4 * P]} pos={[-0.2, pb + 0.12, 0]} color="#111" />
       {pins.map((p, i) => {

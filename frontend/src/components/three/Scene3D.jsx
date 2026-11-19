@@ -4,6 +4,7 @@ import { OrbitControls, Html } from '@react-three/drei'
 import * as THREE from 'three'
 import { useStore } from '../../contexts/store.js'
 import { DEFS, mountsOf, partScale, partSize, pinPos3d, pins3d, vehicleLift, chosenMaterial, genericMaterial } from '@shared/components.js'
+import { BOARD_BUTTONS, boardButtonAt, boardButtonInput } from '@shared/boardButtons.js'
 import { applyMaterial } from '../../functions/materialSwap.js'
 import { servoHornRotation, rootOf } from '@shared/assembly.js'
 import { ARENA } from '@shared/tracks.js'
@@ -18,6 +19,7 @@ import { Wires3D } from './Wires3D.jsx'
 import { PhysicsLayer } from './physics/PhysicsWorld.jsx'
 import { wireContainerOf, gizmoBusy } from './Wires3D.jsx'
 import { InkTraces } from './InkTraces.jsx'
+import { CameraFeeds } from './CameraFeeds.jsx'
 import { StudioEnvironment } from './StudioEnvironment.jsx'
 import { socketDrop } from '../../functions/socketDrop.js'
 import { beginMove } from '../../functions/buildCollision.js'
@@ -279,6 +281,20 @@ function PartNode({ part, all }) {
           if (st.mode === 'sim') {
             // peças interativas: como no circuito 2D (botões, interruptores, teclados…)
             const ia = DEFS[part.type].interactive
+            // botões da placa (RESET/EN, BOOT, BOOTSEL): no ponto clicado, no referencial da peça
+            const bobj = BOARD_BUTTONS[part.type] && objects.get(part.id)
+            if (bobj) {
+              bobj.updateWorldMatrix(true, false)
+              const l = e.point.clone().applyMatrix4(bobj.matrixWorld.clone().invert())
+              const b = boardButtonAt(part.type, l.x, l.z)
+              if (b) {
+                e.stopPropagation()
+                setInput(part.id, boardButtonInput(b))
+                return
+              }
+            }
+            // placas com botões próprios (ON/OFF da Pico4Drive): só o botão clicado conta
+            if (bobj && ia?.kind === 'press') return
             if (part.type === 'button' || ia?.kind === 'press' || ia?.press) {
               e.stopPropagation()
               pressButton(part.id)
@@ -598,6 +614,17 @@ function ExportHandle() {
   return null
 }
 
+// depuração e capturas automáticas (só em desenvolvimento): window.__three = estado do R3F
+// (câmara, controls, cena), como o window.__store do store.js
+function DevThreeHandle() {
+  const s = useThree()
+  useEffect(() => {
+    window.__three = s
+    window.__simRef = simRef
+  }, [s])
+  return null
+}
+
 export function Scene3D() {
   const set = useStore((s) => s.set)
   const paused = useStore((s) => s.scenePaused) // modal "Projetos" aberto
@@ -637,8 +664,11 @@ export function Scene3D() {
       <PhysicsLayer />
       <InkTraces />
       <SimDriver />
+      {/* vista ao vivo dos módulos de câmara (janela "Câmara" e esp_camera.h) */}
+      <CameraFeeds />
       <ExportHandle />
       <OrbitControls makeDefault maxPolarAngle={Math.PI / 2.05} minDistance={3} maxDistance={500} />
+      {import.meta.env.DEV && <DevThreeHandle />}
     </Canvas>
   )
 }

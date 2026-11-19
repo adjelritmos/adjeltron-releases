@@ -1,11 +1,13 @@
 // Relés do grupo G: KS2E-M-DC5 (caixa selada DIP) e placas de 2/4/8 relés SRD-05VDC.
-import { Box, Cyl, Leg, Pcb, HeaderPins, GlowLed, useFrame, useRef, useLabel, liveOf } from '../kit.jsx'
+import { Box, Leg, Pcb, HeaderPins, GlowLed, SilkText, useFrame, useRef, liveOf, geo, mat, mergedGeo, THREE } from '../kit.jsx'
+import { MountHoles, SmdParts, ScrewBlock, SongleRelay, To92, Diode, Dip, Jumper, Batched, roundedBox } from './_gDisplays.jsx'
 import ks2eDef from '@shared/parts/ks2eRelay.js'
 import boards, { RELAY_BOARD, relayX } from '@shared/parts/relayModule.js'
 
 // ---------- KS2E-M-DC5 ----------
+// caixa selada de 20 × 10 × 10 mm em plástico creme, arestas boleadas, marcação gravada e
+// pequenos pés por baixo; as 8 pernas (2 filas a 7,62 mm) entram pela base
 function KsModel({ part }) {
-  const label = useLabel([{ text: 'KS2E-M-DC5', font: 'bold 62px Arial' }, { text: '2A 30VDC', font: '40px Arial', y: 190 }], 512, 256)
   const tick = useRef()
   useFrame(() => {
     if (tick.current) tick.current.position.x = liveOf(part.id)?.closed ? 0.55 : 0.75
@@ -13,13 +15,25 @@ function KsModel({ part }) {
   return (
     <group>
       {ks2eDef.pins.map((p) => (
-        <Leg key={p.id} from={p.pos} to={[p.pos[0], 0.12, p.pos[2] * 0.9]} r={0.025} />
+        <Leg key={p.id} from={p.pos} to={[p.pos[0], 0.14, p.pos[2] * 0.9]} r={0.025} />
       ))}
-      <Box size={[2.0, 1.0, 1.0]} pos={[0, 0.62, 0]} color="#eae6da" rough={0.45} />
-      <mesh position={[0, 1.125, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[1.8, 0.8]} />
-        <meshBasicMaterial map={label} transparent color="#333" />
-      </mesh>
+      {/* pés de afastamento */}
+      <mesh geometry={mergedGeo('ks2eFeet', () => [-0.85, 0.85].map((x) => [geo('gull', () => new THREE.BoxGeometry(1, 1, 1)), [x, 0.1, 0], [0, 0, 0], [0.18, 0.04, 0.8]]))} material={mat('#d8d3c5', 0, 0.5)} />
+      <mesh position={[0, 0.12, 0]} geometry={geo('ks2eBody', () => roundedBox(2.0, 1.0, 1.0, 0.06).translate(0, 0.5, 0))} material={mat('#ebe7dc', 0, 0.42)} castShadow receiveShadow />
+      <SilkText
+        lines={[
+          { text: 'KS2E-M-DC5', font: 'bold 60px Arial', y: 70 },
+          { text: '2A 30VDC  0.5A 125VAC', font: '34px Arial', y: 140 },
+          { text: 'c(UL)us  ⚠  E-232', font: '30px Arial', y: 196 },
+        ]}
+        px={[512, 240]}
+        pos={[-0.12, 1.122, 0]}
+        w={1.55}
+        d={0.72}
+        color="#3a3a3a"
+      />
+      {/* marca do pino 1 */}
+      <mesh position={[-0.88, 1.122, 0.38]} rotation={[-Math.PI / 2, 0, 0]} geometry={geo('ksDot', () => new THREE.CircleGeometry(0.04, 12))} material={mat('#3a3a3a', 0, 0.8)} />
       {/* "janela" com a armadura (indicador) */}
       <Box size={[0.5, 0.02, 0.2]} pos={[0.65, 1.13, 0.35]} color="#222" />
       <group ref={tick}>
@@ -41,42 +55,50 @@ function KsOverlay({ info, live }) {
 // ---------- placas de relés ----------
 function makeBoard(def) {
   const g = RELAY_BOARD[def.type]
+  const T = 0.16
   const zR = -g.d / 2 + 1.8 // centro dos relés (logo atrás dos bornes)
   const zLed = g.d / 2 - 0.95
   const header = def.pins.filter((p) => !/^(NO|COM|NC)\d/.test(p.id))
+  // faixa livre entre os relés e os optoacopladores (nas placas de 4 e 8 relés cabem o
+  // transístor e o díodo de roda livre de cada canal; na de 2 ficam por baixo dos relés)
+  const zBand = -g.d / 2 + 2.75
+  const room = zLed - 0.12 - zBand > 1.0
+  const xs = Array.from({ length: g.n }, (_, k) => relayX(g, k))
+  const smd = xs.flatMap((x) => [
+    [x + 0.4, zLed + 0.05, 0, 'r'],
+    [x + 0.2, zLed - 0.2, Math.PI / 2, 'r'],
+  ])
+  // título na zona livre à esquerda da barra de pinos
+  const tx0 = -g.w / 2 + 0.6
+  const tx1 = -((header.length - 1) / 2) * 0.254 - 0.25
+  const tw = Math.min(3.2, tx1 - tx0)
+  const xJ = g.w / 2 - 1.1 // jumper JD-VCC (afastado do furo do canto)
+  const holes = [[-g.w / 2 + 0.3, -g.d / 2 + 0.3], [g.w / 2 - 0.3, -g.d / 2 + 0.3], [-g.w / 2 + 0.3, g.d / 2 - 0.3], [g.w / 2 - 0.3, g.d / 2 - 0.3]]
   function Model({ part }) {
-    const label = useLabel([{ text: 'SRD-05VDC-SL-C', font: 'bold 54px Arial' }, { text: '10A 250VAC', font: '44px Arial', y: 180 }], 512, 256)
-    const title = useLabel([{ text: `${g.n} Relay Module`, font: 'bold 60px Arial' }], 512, 96)
     return (
       <group>
-        <Pcb size={[g.w, 0.16, g.d]} color="#1f5f9f" />
-        {Array.from({ length: g.n }, (_, k) => {
-          const x = relayX(g, k)
-          return (
-            <group key={k}>
-              <Box size={[1.5, 1.55, 1.9]} pos={[x, 0.16 + 0.775, zR]} color="#1f6fd1" rough={0.4} />
-              <mesh position={[x, 1.715, zR]} rotation={[-Math.PI / 2, 0, Math.PI / 2]}>
-                <planeGeometry args={[1.7, 0.85]} />
-                <meshBasicMaterial map={label} transparent />
-              </mesh>
-              {/* borne de 3 parafusos (NO, COM, NC) */}
-              <Box size={[1.5, 0.9, 0.75]} pos={[x, 0.16 + 0.45, -g.d / 2 + 0.45]} color="#1a5fb4" />
-              {[-0.5, 0, 0.5].map((dx) => (
-                <Cyl key={dx} r={0.17} h={0.06} pos={[x + dx, 1.05, -g.d / 2 + 0.45]} color="#cfcfcf" metal={0.9} rough={0.3} />
-              ))}
-              {/* optoacoplador, transístor, LED do canal */}
-              <Box size={[0.45, 0.3, 0.6]} pos={[x - 0.3, 0.31, zLed + 0.2]} color="#111" />
-              <GlowLed pos={[x + 0.4, 0.21, zLed + 0.35]} color="#ff3030" read={() => (liveOf(part.id)?.coils?.[k] ? 1 : 0)} />
-            </group>
-          )
-        })}
-        <GlowLed pos={[-g.w / 2 + 0.45, 0.21, g.d / 2 - 0.9]} color="#ff3030" read={() => (liveOf(part.id)?.powered ? 1 : 0)} />
-        {/* jumper JD-VCC */}
-        <Box size={[0.5, 0.35, 0.25]} pos={[g.w / 2 - 0.55, 0.33, g.d / 2 - 0.35]} color="#ffd600" />
-        <mesh position={[0, 0.165, g.d / 2 - 0.8]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[Math.min(3.2, g.w * 0.45), 0.3]} />
-          <meshBasicMaterial map={title} transparent />
-        </mesh>
+        <Pcb size={[g.w, T, g.d]} color="#1f5f9f" holes={false} />
+        <MountHoles pts={holes} y={T} r={0.15} ring={0.25} />
+        {/* partes iguais de cada canal (relé, borne de 3 parafusos NO/COM/NC, optoacoplador PC817,
+            transístor e díodo), juntas numa malha por material */}
+        <Batched id={`relayCh|${def.type}`} at={xs.map((x) => [x, 0])}>
+          <SongleRelay pos={[0, T, zR]} rotY={Math.PI / 2} />
+          <ScrewBlock pos={[0, T, -g.d / 2 + 0.45]} />
+          <Dip pos={[-0.3, T, zLed + 0.2]} rotY={Math.PI / 2} label="PC817" color="#1a1a1a" />
+          {room && <To92 pos={[0.35, T, zBand + 0.45]} />}
+          {room && <Diode pos={[-0.35, T, zBand + 0.5]} rotY={Math.PI / 2} len={0.42} r={0.11} pitch={0.76} />}
+        </Batched>
+        {xs.map((x, k) => (
+          <GlowLed key={k} pos={[x + 0.4, 0.2, zLed + 0.35]} size={[0.2, 0.07, 0.125]} color="#ff3030" read={() => (liveOf(part.id)?.coils?.[k] ? 1 : 0)} />
+        ))}
+        <SmdParts list={smd} y={T} />
+        <GlowLed pos={[-g.w / 2 + 0.45, 0.2, g.d / 2 - 0.9]} size={[0.2, 0.07, 0.125]} color="#ff3030" read={() => (liveOf(part.id)?.powered ? 1 : 0)} />
+        {/* jumper JD-VCC ↔ VCC e o terceiro pino (GND) */}
+        <Jumper pos={[xJ, T, g.d / 2 - 0.35]} />
+        <Box size={[0.25, 0.25, 0.25]} pos={[xJ + 0.381, T + 0.125, g.d / 2 - 0.35]} color="#111" rough={0.5} />
+        <Box size={[0.064, 0.6, 0.064]} pos={[xJ + 0.381, T + 0.3, g.d / 2 - 0.35]} color="#d9b44a" metal={1} rough={0.25} />
+        <SilkText text="JD-VCC  VCC  GND" pos={[xJ + 0.13, T + 0.002, g.d / 2 - 0.12]} w={0.85} d={0.1} font="bold 40px Arial" px={[440, 48]} />
+        <SilkText text={`${g.n} Relay Module`} pos={[(tx0 + tx1) / 2, T + 0.002, g.d / 2 - 0.35]} w={tw} d={tw / 9} font="bold 60px Arial" px={[540, 60]} />
         <HeaderPins pins={header} base={0} up={0.45} />
       </group>
     )

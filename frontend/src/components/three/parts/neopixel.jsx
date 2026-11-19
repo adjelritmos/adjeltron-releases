@@ -1,39 +1,17 @@
 // Fita (8) e anel (16) de LEDs WS2812B. A cor de cada LED vem de live.c (0xRRGGBB).
-import { Box, Pcb, HeaderPins, PixelHalo, pixelLevel, useFrame, useRef, THREE, liveOf } from '../kit.jsx'
+import { Pcb, HeaderPins, pcbMat, geo, useFrame, useRef, THREE, liveOf } from '../kit.jsx'
+import { Ws2812, Ws2812Bodies, SmdParts, SolderPads } from './_gDisplays.jsx'
 import stripDef from '@shared/parts/neopixelStrip.js'
 import ringDef from '@shared/parts/neopixelRing.js'
 
 const R_RING = 1.9
-const stripPos = (i) => [(i - 3.5) * 0.6, 0, 0]
+// passo de 5,5 mm: o primeiro e o último LED ficam ao lado das barras de pinos
+const stripPos = (i) => [(i - 3.5) * 0.55, 0, 0]
 const ringPos = (i) => {
   const a = (i / 16) * Math.PI * 2
   return [R_RING * Math.sin(a), 0, -R_RING * Math.cos(a)]
 }
 const css = (c) => `#${(c >>> 0).toString(16).padStart(6, '0')}`
-
-// LED 5050: caixa branca com a cor emitida lida a cada frame
-function Pixel({ id, i, pos }) {
-  const mat = useRef()
-  const col = useRef(new THREE.Color())
-  useFrame(() => {
-    const c = liveOf(id)?.c?.[i] ?? 0
-    if (!mat.current) return
-    const v = pixelLevel(c, col.current)
-    mat.current.emissive.copy(col.current)
-    mat.current.emissiveIntensity = v ? 0.6 + 1.6 * v : 0
-    mat.current.color.set(v ? '#ffffff' : '#e8e4da')
-  })
-  return (
-    <group position={pos}>
-      <Box size={[0.5, 0.12, 0.5]} pos={[0, 0.06, 0]} color="#f2f2f2" />
-      <mesh position={[0, 0.125, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[0.2, 20]} />
-        <meshStandardMaterial ref={mat} color="#e8e4da" emissive="#000" toneMapped={false} />
-      </mesh>
-      <PixelHalo id={id} i={i} pos={[0, 0.25, 0]} size={1.3} />
-    </group>
-  )
-}
 
 // luz ambiente com a cor média (uma por peça, para não pesar)
 function AvgLight({ id, pos }) {
@@ -57,38 +35,59 @@ function AvgLight({ id, pos }) {
   return <pointLight ref={l} position={pos} intensity={0} distance={10} />
 }
 
+// barra de 8 LEDs (51 × 10 mm, placa preta): WS2812B 5050 com o condensador de 100 nF de
+// cada um, entrada (5V, DIN, GND) numa ponta e saída (DOUT, com 5V e GND de passagem) na outra
+const STRIP_AT = Array.from({ length: 8 }, (_, i) => [stripPos(i)[0], 0, 0])
+const STRIP_CAPS = Array.from({ length: 8 }, (_, i) => [stripPos(i)[0], 0.37, 0, 'c'])
 function StripModel({ part }) {
   return (
     <group>
       <Pcb size={[5.1, 0.16, 1.0]} color="#151515" holes={false} />
       {Array.from({ length: 8 }, (_, i) => (
-        <group key={i} position={[0, 0.16, 0]}>
-          <Pixel id={part.id} i={i} pos={stripPos(i)} />
-        </group>
+        <Ws2812 key={i} id={part.id} i={i} pos={[stripPos(i)[0], 0.16, 0]} halo={1.3} body={false} />
       ))}
+      <Ws2812Bodies at={STRIP_AT} y={0.16} />
+      <SmdParts list={STRIP_CAPS} y={0.16} />
+      <SolderPads pts={[[2.3, -0.254], [2.3, 0.254]]} y={0.16} r={0.085} blob={false} />
       <HeaderPins pins={stripDef.pins} base={0} up={0.45} />
       <AvgLight id={part.id} pos={[0, 1.5, 0]} />
     </group>
   )
 }
 
+// anel de 16 LEDs (Ø 44,5 / 31,75 mm, placa preta recortada) com um condensador entre LEDs e a
+// pequena placa dos pinos
+const ringGeo = () =>
+  geo('neoRing16', () => {
+    const s = new THREE.Shape()
+    s.absarc(0, 0, 2.225, 0, Math.PI * 2, false)
+    const h = new THREE.Path()
+    h.absarc(0, 0, 1.5875, 0, Math.PI * 2, true)
+    s.holes.push(h)
+    const b = 0.015
+    return new THREE.ExtrudeGeometry(s, { depth: 0.16 - 2 * b, bevelEnabled: true, bevelSize: b, bevelThickness: b, bevelSegments: 1, curveSegments: 64 }).rotateX(-Math.PI / 2).translate(0, b, 0)
+  })
+// LED i a −i/16 de volta (o mesmo que o grupo rodado de cada um)
+const RING_AT = Array.from({ length: 16 }, (_, i) => {
+  const a = (i / 16) * Math.PI * 2
+  return [R_RING * Math.sin(a), -R_RING * Math.cos(a), -a]
+})
+const RING_CAPS = Array.from({ length: 16 }, (_, i) => {
+  const a = ((i + 0.5) / 16) * Math.PI * 2
+  return [R_RING * Math.sin(a), -R_RING * Math.cos(a), -a, 'c']
+})
 function RingModel({ part }) {
   return (
     <group>
-      <mesh position={[0, 0.16, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[1.59, 2.22, 64]} />
-        <meshStandardMaterial color="#151515" side={THREE.DoubleSide} roughness={0.6} />
-      </mesh>
-      <Box size={[1.4, 0.16, 0.7]} pos={[0, 0.08, 2.45]} color="#151515" />
-      <mesh position={[0, 0.08, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[1.59, 2.22, 64]} />
-        <meshStandardMaterial color="#1c1c1c" side={THREE.DoubleSide} />
-      </mesh>
+      <mesh geometry={ringGeo()} material={pcbMat('#151515')} castShadow receiveShadow />
+      <Pcb size={[1.4, 0.16, 0.7]} pos={[0, 0, 2.45]} color="#151515" holes={false} />
       {Array.from({ length: 16 }, (_, i) => (
-        <group key={i} position={[0, 0.16, 0]} rotation={[0, -(i / 16) * Math.PI * 2, 0]}>
-          <Pixel id={part.id} i={i} pos={[0, 0, -R_RING]} />
+        <group key={i} rotation={[0, -(i / 16) * Math.PI * 2, 0]}>
+          <Ws2812 id={part.id} i={i} pos={[0, 0.16, -R_RING]} halo={1.3} body={false} />
         </group>
       ))}
+      <Ws2812Bodies at={RING_AT} y={0.16} />
+      <SmdParts list={RING_CAPS} y={0.16} />
       <HeaderPins pins={ringDef.pins} base={0} up={0.45} />
       <AvgLight id={part.id} pos={[0, 1.8, 0]} />
     </group>

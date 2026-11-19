@@ -1,37 +1,39 @@
-// DHT11: caixa azul com grelha frontal e 4 pernas (mais pequena que o DHT22).
-import { Box, RBox, Leg, useCanvasTexture } from '../kit.jsx'
+// DHT11: caixa azul de 15,5 × 12 × 5,5 mm com a grelha frontal saliente (treliça com a
+// cavidade escura por trás), base com os 4 furos das pernas e 4 pernas de 2,54 mm.
+import { RBox, Leg, useCanvasTexture } from '../kit.jsx'
 import { setInput } from '../../../services/simControl.js'
 import def from '@shared/parts/dht11.js'
+import { Grille } from './_analogModule.jsx'
 
-const BODY = { y0: 0.3, h: 1.6, w: 1.2, t: 0.55 }
-const SLOTS = []
-for (let r = 0; r < 6; r++) for (let c = 0; c < 3; c++) SLOTS.push([(c - 1) * 0.3, BODY.y0 + BODY.h - 0.25 - r * 0.17])
+const BODY = { y0: 0.3, h: 1.6, w: 1.2, t: 0.52 }
+const COLS = [-0.3, 0, 0.3]
+const ROWS = Array.from({ length: 6 }, (_, r) => BODY.y0 + BODY.h - 0.25 - r * 0.17)
 
 function drawFace(ctx, w, h) {
   ctx.fillStyle = '#2f73c9'
   ctx.fillRect(0, 0, w, h)
-  ctx.fillStyle = '#e8f1ff'
-  ctx.font = `bold ${Math.round(w * 0.2)}px Arial`
+  ctx.fillStyle = '#d7e6fb'
+  ctx.font = `bold ${Math.round(w * 0.17)}px Arial`
   ctx.textAlign = 'center'
-  ctx.fillText('DHT11', w / 2, h * 0.9)
+  ctx.fillText('DHT11', w / 2, h * 0.92)
 }
 
 function Model() {
-  const tex = useCanvasTexture(drawFace, ['dht11'], 160, 220)
+  const tex = useCanvasTexture(drawFace, ['dht11b'], 160, 220)
   const fx = BODY.t / 2
   return (
     <group>
       {def.pins.map((p) => (
         <Leg key={p.id} from={p.pos} to={[0, BODY.y0 + 0.05, p.pos[2]]} r={0.03} />
       ))}
-      <RBox size={[BODY.t, BODY.h, BODY.w]} r={0.05} pos={[0, BODY.y0 + BODY.h / 2, 0]} color="#2f73c9" rough={0.6} />
-      <mesh position={[fx + 0.002, BODY.y0 + BODY.h / 2, 0]} rotation={[0, Math.PI / 2, 0]}>
-        <planeGeometry args={[BODY.w - 0.05, BODY.h - 0.05]} />
-        <meshStandardMaterial map={tex} roughness={0.6} />
+      {/* base mais estreita (por onde saem as pernas) e corpo */}
+      <RBox size={[BODY.t - 0.08, 0.08, BODY.w - 0.1]} r={0.02} pos={[-0.02, BODY.y0 + 0.04, 0]} color="#2a68b8" rough={0.6} />
+      <RBox size={[BODY.t, BODY.h - 0.06, BODY.w]} r={0.05} pos={[0, BODY.y0 + 0.06 + (BODY.h - 0.06) / 2, 0]} color="#2f73c9" rough={0.55} />
+      <mesh position={[fx + 0.001, BODY.y0 + BODY.h / 2, 0]} rotation={[0, Math.PI / 2, 0]}>
+        <planeGeometry args={[BODY.w - 0.06, BODY.h - 0.06]} />
+        <meshStandardMaterial map={tex} roughness={0.55} />
       </mesh>
-      {SLOTS.map(([z, y], i) => (
-        <Box key={i} size={[0.03, 0.1, 0.18]} pos={[fx + 0.006, y, z]} color="#1b3f73" rough={0.8} />
-      ))}
+      <Grille id="dht11" fx={fx} cols={COLS} rows={ROWS} cw={0.19} ch={0.1} depth={0.035} color="#2f73c9" cavity="#123155" />
     </group>
   )
 }

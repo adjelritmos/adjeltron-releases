@@ -267,7 +267,7 @@ export const PRESETS = {
     scenario: {
       inputs: [at(3.0, 3.2, (I) => (I.btn = { pressed: true }))],
       release: (I) => (I.btn = { pressed: false }),
-      check: (S) => (/Arranque n\.o 1\n/.test(S.serial) && /1024 bytes/.test(S.serial) && /Contador apagado/.test(S.serial) ? 'arranque n.º 1 gravado na EEPROM (1024 bytes); botão apaga o contador' : null),
+      check: (S) => (/Arranque n\.o 1\r?\n/.test(S.serial) && /1024 bytes/.test(S.serial) && /Contador apagado/.test(S.serial) ? 'arranque n.º 1 gravado na EEPROM (1024 bytes); botão apaga o contador' : null),
     },
   },
   plotterSeno: {

@@ -165,6 +165,8 @@ export const useStore = create((set, get) => ({
   toast: null,
   consoleTab: 'monitor', // 'monitor' | 'plotter'
   scopeOpen: false,
+  camOpen: false, // janela "Câmara" (vista ao vivo dos módulos de câmara, panels/CameraPanel.jsx)
+  camSel: null, // id do módulo de câmara mostrado nessa janela (null = o primeiro)
 
   set: (patch) => set(patch),
   // pontos de passagem 3D de um fio (vista 3D; [] / null = percurso automático)

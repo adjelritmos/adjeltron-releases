@@ -1,8 +1,11 @@
-// Chassi de lagartas: casco, convés furado com guarda-lamas, rodas motrizes/tensoras
-// (r 2,0 em x = ±7,5), rodas de apoio e lagartas de borracha com sapatas que andam com
-// live.trackPos.L/R (cm; positivo = robô para a frente, o troço de baixo anda para trás).
+// Chassi de lagartas (tipo TP101): casco de alumínio anodizado com a furação lateral, convés
+// furado com guarda-lamas e parafusos, rodas motrizes/tensoras dentadas (r 2,0 em x = ±7,5)
+// com cubo e porca, rodas de apoio com aro de borracha e jante de alumínio de 5 furos, e
+// lagartas de elos com garras (sapatas com nervura) que andam com live.trackPos.L/R (cm;
+// positivo = robô para a frente, o troço de baixo anda para trás).
 import { useLayoutEffect } from 'react'
-import { Box, Cyl, RBox, useFrame, useRef, liveOf, mat, geo, THREE } from '../kit.jsx'
+import { Box, Cyl, RBox, useFrame, useRef, liveOf, mat, geo, mergedGeo, THREE } from '../kit.jsx'
+import { ScrewHeads } from './_matKit.jsx'
 import { Holes, Gear, gridPts, rotZ } from './_mechKit.jsx'
 import { TANK } from '@shared/parts/tankChassis.js'
 
@@ -61,7 +64,23 @@ function Track({ part, side }) {
     for (const w of wheels.current) if (w) w.rotation.z = -tp / (w.userData.r || 1)
   })
   const W = TANK.trackW
-  const padGeo = geo('tankPad', () => new THREE.BoxGeometry(PAD * 0.82, TANK.beltT, W))
+  // elo da lagarta: sapata (face de dentro lisa) com a garra transversal por fora e as duas
+  // cavilhas da articulação nas pontas; a face da garra fica na linha de baixo da banda
+  const padGeo = mergedGeo('tankPadV3', () => {
+    const b = geo('gull', () => new THREE.BoxGeometry(1, 1, 1))
+    const t = TANK.beltT
+    const pin = geo('tankPadPin', () => new THREE.CylinderGeometry(0.07, 0.07, 1, 8))
+    return [
+      [b, [0, 0.06, 0], [0, 0, 0], [PAD * 0.84, t - 0.12, W]],
+      [b, [0, -t / 2 + 0.07, 0], [0, 0, 0], [0.2, 0.14, W * 0.94]],
+      [pin, [PAD * 0.42, 0.05, 0], [Math.PI / 2, 0, 0], [1, W + 0.06, 1]],
+    ]
+  })
+  // 5 furos de aligeiramento das jantes (discos escuros ligeiramente salientes)
+  const wheelHoles = mergedGeo(`tankWheelHoles${TANK.roadR}`, () => {
+    const h = geo('tankWheelHole', () => new THREE.CylinderGeometry(0.2, 0.2, 0.05, 12))
+    return [0, 1, 2, 3, 4].map((k) => [h, [Math.cos((k * 2 * Math.PI) / 5) * TANK.roadR * 0.5, Math.sin((k * 2 * Math.PI) / 5) * TANK.roadR * 0.5, 0], rotZ])
+  })
   const setW = (i, r) => (g) => {
     wheels.current[i] = g
     if (g) g.userData.r = r
@@ -77,13 +96,23 @@ function Track({ part, side }) {
             <Gear z={16} m={0.25} w={1.8} color="#455a64" metal={0.7} rough={0.4} bore={0.3} />
           </group>
           <Cyl r={0.5} h={W + 0.1} rot={rotZ} color="#90a4ae" metal={0.8} rough={0.3} seg={16} />
+          {/* porca do cubo por fora */}
+          <Cyl r={0.3} h={0.2} pos={[0, 0, (side === 'L' ? -1 : 1) * (W / 2 + 0.1)]} rot={rotZ} color="#c9cfd3" metal={0.9} rough={0.3} seg={6} />
         </group>
       ))}
       {/* rodas de apoio */}
       {TANK.roadX.map((x, i) => (
         <group key={x} position={[x, TANK.roadR + TANK.beltT, 0]} ref={setW(2 + i, TANK.roadR)}>
-          <Cyl r={TANK.roadR} h={W * 0.8} rot={rotZ} color="#37474f" metal={0.5} rough={0.5} seg={24} />
-          <Box size={[0.3, TANK.roadR * 1.6, W * 0.82]} color="#263238" />
+          {/* aro de borracha e jante de alumínio com 5 furos e o rolamento ao centro */}
+          <Cyl r={TANK.roadR} h={W * 0.8} rot={rotZ} color="#1d1d1d" rough={0.85} seg={28} />
+          {[-1, 1].map((k) => (
+            <group key={k} position={[0, 0, k * W * 0.4]}>
+              <Cyl r={TANK.roadR * 0.78} h={0.04} rot={rotZ} color="#9ea7ad" metal={0.85} rough={0.3} seg={28} />
+              <mesh geometry={wheelHoles} material={mat('#141618', 0, 0.85)} />
+              <Cyl r={0.28} h={0.08} rot={rotZ} color="#c9cfd3" metal={0.9} rough={0.25} seg={16} />
+              <Cyl r={0.12} h={0.1} rot={rotZ} color="#2b2f33" metal={0.6} rough={0.4} seg={6} />
+            </group>
+          ))}
         </group>
       ))}
       {/* longarina interior que segura as rodas */}
@@ -97,13 +126,18 @@ function Model({ part }) {
   return (
     <group>
       {/* casco */}
-      <RBox size={[h.x[1] - h.x[0], h.y[1] - h.y[0], h.z[1] - h.z[0]]} r={0.2} pos={[0, (h.y[0] + h.y[1]) / 2, 0]} color="#3e4a52" metal={0.6} rough={0.45} />
+      <RBox size={[h.x[1] - h.x[0], h.y[1] - h.y[0], h.z[1] - h.z[0]]} r={0.2} pos={[0, (h.y[0] + h.y[1]) / 2, 0]} color="#2f3940" metal={0.6} rough={0.42} />
+      {/* furação das chapas laterais do casco (fila de furos M3 a 1 cm) */}
+      <Holes pts={Array.from({ length: 14 }, (_, i) => [-6.5 + i * 1.0, 5.05, h.z[0]])} r={0.15} h={0.04} axis="z" />
+      <Holes pts={Array.from({ length: 14 }, (_, i) => [-6.5 + i * 1.0, 5.05, h.z[1]])} r={0.15} h={0.04} axis="z" />
       {/* convés com furos e guarda-lamas */}
       <RBox size={[20, 0.3, 15.2]} r={0.08} pos={[0, TANK.deck + 0.15, 0]} color="#cfd8dc" metal={0.85} rough={0.32} />
       <Holes pts={gridPts(23, 8, 0.8, TANK.deck + 0.15, -8.8, -2.8)} r={0.18} h={0.32} />
       {[-1, 1].map((s) => (
         <Box key={s} size={[20, 1.0, 0.2]} pos={[0, TANK.deck - 0.35, s * 7.5]} color="#cfd8dc" metal={0.85} rough={0.32} />
       ))}
+      {/* parafusos do convés aos cantos do casco */}
+      <ScrewHeads pts={[[-9.3, TANK.deck + 0.3, -6.9], [9.3, TANK.deck + 0.3, -6.9], [-9.3, TANK.deck + 0.3, 6.9], [9.3, TANK.deck + 0.3, 6.9]]} r={0.22} color="#2b2f33" />
       <Track part={part} side="L" />
       <Track part={part} side="R" />
     </group>

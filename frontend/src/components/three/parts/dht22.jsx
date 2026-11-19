@@ -1,28 +1,44 @@
-// DHT22: caixa branca com grelha frontal e 4 pernas. No 2D há botões −/+ para a humidade.
-import { Box, RBox, Cyl, Leg, useCanvasTexture } from '../kit.jsx'
+// DHT22 (AM2302): caixa branca de 25,1 × 15,1 × 7,7 mm com a grelha frontal de 4 × 8
+// aberturas (treliça saliente sobre a cavidade escura), patilha de fixação com furo de 3 mm
+// no topo e 4 pernas. No 2D há botões −/+ para a humidade.
+import { RBox, Leg, useCanvasTexture, THREE, geo, mat } from '../kit.jsx'
 import { setInput } from '../../../services/simControl.js'
 import def from '@shared/parts/dht22.js'
+import { Grille } from './_analogModule.jsx'
 
-const BODY = { y0: 0.3, h: 2.1, w: 1.51, t: 0.77 } // + patilha de 0,45 no topo (total 2,85)
+const BODY = { y0: 0.3, h: 2.1, w: 1.51, t: 0.75 } // + patilha de 0,45 no topo (total 2,85)
+const COLS = [-0.465, -0.155, 0.155, 0.465]
+const ROWS = Array.from({ length: 8 }, (_, r) => BODY.y0 + BODY.h - 0.2 - r * 0.16)
 
-function drawGrille(ctx, w, h) {
+function drawFace(ctx, w, h) {
   ctx.fillStyle = '#f4f4f2'
   ctx.fillRect(0, 0, w, h)
-  // contorno da grelha (as aberturas são geometria; aqui só o texto)
-  ctx.fillStyle = '#333'
-  ctx.font = `bold ${Math.round(w * 0.2)}px Arial`
+  ctx.fillStyle = '#3a3a3a'
+  ctx.font = `bold ${Math.round(w * 0.18)}px Arial`
   ctx.textAlign = 'center'
-  ctx.fillText('DHT22', w / 2, h * 0.84)
-  ctx.font = `${Math.round(w * 0.11)}px Arial`
-  ctx.fillText('AM2302', w / 2, h * 0.93)
+  ctx.fillText('DHT22', w / 2, h * 0.86)
+  ctx.font = `${Math.round(w * 0.1)}px Arial`
+  ctx.fillText('AM2302', w / 2, h * 0.95)
 }
 
-// grelha: 4 × 9 aberturas retangulares na face da frente (+x)
-const SLOTS = []
-for (let r = 0; r < 8; r++) for (let c = 0; c < 4; c++) SLOTS.push([(c - 1.5) * 0.31, BODY.y0 + BODY.h - 0.2 - r * 0.16])
+// patilha de fixação (perfil arredondado no topo, com o furo de 3 mm) extrudida em x
+const tabGeo = () =>
+  geo('dht22tab', () => {
+    const s = new THREE.Shape()
+    s.moveTo(-0.45, 0)
+    s.lineTo(0.45, 0)
+    s.lineTo(0.45, 0.05)
+    s.absarc(0, 0.05, 0.45, 0, Math.PI, false)
+    s.lineTo(-0.45, 0)
+    const hole = new THREE.Path()
+    hole.absarc(0, 0.2, 0.14, 0, Math.PI * 2, true)
+    s.holes.push(hole)
+    // forma no plano zy (x da forma = z), espessura 0,3 ao longo de x
+    return new THREE.ExtrudeGeometry(s, { depth: 0.3, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 1, curveSegments: 12 }).rotateY(Math.PI / 2).translate(-0.15, 0, 0)
+  })
 
 function Model() {
-  const tex = useCanvasTexture(drawGrille, ['dht-2'], 160, 264)
+  const tex = useCanvasTexture(drawFace, ['dht-3'], 160, 264)
   const fx = BODY.t / 2
   return (
     <group>
@@ -30,17 +46,14 @@ function Model() {
       {def.pins.map((p) => (
         <Leg key={p.id} from={p.pos} to={[0, BODY.y0 + 0.05, p.pos[2]]} r={0.03} />
       ))}
-      <RBox size={[BODY.t, BODY.h, BODY.w]} r={0.06} pos={[0, BODY.y0 + BODY.h / 2, 0]} color="#f4f4f2" rough={0.6} />
-      {/* patilha de fixação com furo, no topo */}
-      <RBox size={[0.3, 0.45, 0.9]} r={0.04} pos={[-0.18, BODY.y0 + BODY.h + 0.2, 0]} color="#f0f0ee" rough={0.6} />
-      <Cyl r={0.15} h={0.32} pos={[-0.18, BODY.y0 + BODY.h + 0.25, 0]} rot={[0, 0, Math.PI / 2]} color="#3a3a3a" seg={16} />
-      <mesh position={[fx + 0.002, BODY.y0 + BODY.h / 2, 0]} rotation={[0, Math.PI / 2, 0]}>
+      <RBox size={[BODY.t, BODY.h, BODY.w]} r={0.06} pos={[0, BODY.y0 + BODY.h / 2, 0]} color="#f4f4f2" rough={0.55} />
+      {/* patilha de fixação com furo, no topo (recuada para trás, como no real) */}
+      <mesh position={[-0.2, BODY.y0 + BODY.h - 0.02, 0]} castShadow geometry={tabGeo()} material={mat('#efefec', 0, 0.55)} />
+      <mesh position={[fx + 0.001, BODY.y0 + BODY.h / 2, 0]} rotation={[0, Math.PI / 2, 0]}>
         <planeGeometry args={[BODY.w - 0.06, BODY.h - 0.06]} />
-        <meshStandardMaterial map={tex} roughness={0.6} />
+        <meshStandardMaterial map={tex} roughness={0.55} />
       </mesh>
-      {SLOTS.map(([z, y], i) => (
-        <Box key={i} size={[0.03, 0.09, 0.2]} pos={[fx + 0.006, y, z]} color="#4a4d50" rough={0.8} />
-      ))}
+      <Grille id="dht22" fx={fx} cols={COLS} rows={ROWS} cw={0.2} ch={0.09} depth={0.022} color="#f4f4f2" cavity="#2e3134" />
     </group>
   )
 }

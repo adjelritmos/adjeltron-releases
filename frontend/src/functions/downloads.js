@@ -1,6 +1,6 @@
-// Instaladores da app desktop: vêm da última Release do GitHub (criada pelo workflow
-// .github/workflows/desktop.yml a cada tag v*). Lidos da API pública, com cache na sessão.
-export const REPO = 'adjelritmos/adjeltron'
+// Instaladores da app desktop: vêm da última Release do GitHub (repositório público adjeltron-releases, criada pelo workflow
+// .github/workflows/release.yml a cada tag v*). Lidos da API pública, com cache na sessão.
+export const REPO = 'adjelritmos/adjeltron-releases'
 export const RELEASES_URL = `https://github.com/${REPO}/releases/latest`
 const API = `https://api.github.com/repos/${REPO}/releases/latest`
 

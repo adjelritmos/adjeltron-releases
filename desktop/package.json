@@ -1,6 +1,6 @@
 {
   "name": "adjeltron-desktop",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "description": "App desktop do adjeltron (Tauri): a mesma bancada do site, isolada numa janela nativa com servidor local em Rust",

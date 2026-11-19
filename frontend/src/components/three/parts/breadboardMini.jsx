@@ -1,5 +1,6 @@
-// Mini breadboard de 170 pontos (17 × 10), sem trilhos.
-import { RBox, PITCH, useCanvasTexture } from '../kit.jsx'
+// Mini breadboard de 170 pontos (17 × 10, 47 × 35 × 8,5 mm), sem trilhos, com o canal central.
+import { Box, RBox, PITCH, useCanvasTexture } from '../kit.jsx'
+import { texStripGeo } from './_boardKit.jsx'
 import def, { BBM_COLS } from '@shared/parts/breadboardMini.js'
 
 const [W, H, D] = def.size
@@ -49,15 +50,28 @@ function draw(ctx, w, h) {
   }
 }
 
+// corpo em ABS: base e as duas metades do topo separadas pelo canal central (com 3 mm de fundo,
+// como na peça real), ranhuras de encaixe nos lados e o topo com os furos e a serigrafia numa
+// textura partilhada pelas duas metades.
+const CH = 0.17 // meia largura do canal central
+const DEPTH = 0.3
 function Model() {
   const tex = useCanvasTexture(draw, ['bbm-2'], 1024, Math.round((1024 * D) / W))
+  const halves = [[-D / 2, -CH], [CH, D / 2]]
   return (
     <group>
-      <RBox size={[W, H - 0.01, D]} r={0.06} pos={[0, (H - 0.01) / 2, 0]} color="#ece9df" rough={0.65} />
-      <mesh position={[0, H + 0.001, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[W, D]} />
-        <meshStandardMaterial map={tex} roughness={0.62} />
-      </mesh>
+      <RBox size={[W, H - DEPTH, D]} r={0.06} pos={[0, (H - DEPTH) / 2, 0]} color="#ece9df" rough={0.65} />
+      {halves.map(([z0, z1]) => (
+        <group key={z0}>
+          <RBox size={[W, DEPTH + 0.05, z1 - z0]} r={0.04} pos={[0, H - 0.01 - (DEPTH + 0.05) / 2, (z0 + z1) / 2]} color="#ece9df" rough={0.65} />
+          <mesh position={[0, H - 0.008, 0]} receiveShadow geometry={texStripGeo(`bbm${z0}`, W, D, z0, z1)}>
+            <meshStandardMaterial map={tex} roughness={0.62} />
+          </mesh>
+        </group>
+      ))}
+      {/* ranhuras de encaixe em rabo de andorinha nos 4 lados */}
+      {[-1.2, 1.2].map((x) => [-1, 1].map((s) => <Box key={`${x}${s}`} size={[0.37, 0.52, 0.02]} pos={[x, 0.33, s * (D / 2 + 0.002)]} color="#bdb9ad" rough={0.8} />))}
+      {[-1, 1].map((s) => <Box key={s} size={[0.02, 0.52, 0.37]} pos={[s * (W / 2 + 0.002), 0.33, 0]} color="#bdb9ad" rough={0.8} />)}
     </group>
   )
 }

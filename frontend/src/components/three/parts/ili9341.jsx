@@ -1,12 +1,15 @@
 // TFT 2,8" ILI9341 240×320. A imagem chega em live.fb (base64 de pares RLE [n, rgb565])
 // só durante ~0,5 s após cada alteração; por isso guarda-se uma cache por peça.
 import { useMemo } from 'react'
-import { Box, Pcb, HeaderPins, Cyl, useFrame, useRef, THREE, liveOf, useLabel } from '../kit.jsx'
+import { Pcb, HeaderPins, Chip, useFrame, useRef, THREE, liveOf, geo, mat } from '../kit.jsx'
 import def, { TFT_AREA as A } from '@shared/parts/ili9341.js'
 import { rectOf } from './_groupA.jsx'
+import { DisplayPanel, MountHoles, SolderPads, SmdParts, PinLabels } from './_gDisplays.jsx'
 
 const W = 240
 const H = 320
+// vidro do painel (a área ativa fica mais perto da ponta oposta aos pinos)
+const PANEL = { x: [-2.49, 2.49], z: [-3.55, 3.37] }
 
 // cache: partId → { ver, raw (imagem descodificada), view (imagem mostrada), key }
 const CACHE = new Map()
@@ -102,28 +105,21 @@ function Model({ part }) {
       tex.needsUpdate = true
     }
   })
-  const label = useLabel([{ text: '2.8" TFT SPI 240x320', font: 'bold 44px Arial' }], 512, 64)
-  const aw = A.x[1] - A.x[0]
-  const ad = A.z[1] - A.z[0]
-  const cz = (A.z[0] + A.z[1]) / 2
   return (
     <group>
-      <Pcb size={[5.0, 0.16, 8.6]} color="#c62828" />
-      {/* moldura do vidro e ecrã */}
-      <Box size={[4.75, 0.3, 7.05]} pos={[0, 0.16 + 0.15, cz + 0.1]} color="#151515" rough={0.35} />
-      <Box size={[4.5, 0.02, 6.1]} pos={[0, 0.465, cz]} color="#050505" rough={0.2} />
-      <mesh position={[0, 0.48, cz]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[aw, ad]} />
-        <meshBasicMaterial map={tex} toneMapped={false} />
-      </mesh>
-      {/* inscrição e pinos */}
-      <mesh position={[0, 0.165, 3.55]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[3.6, 0.45]} />
-        <meshBasicMaterial map={label} transparent />
-      </mesh>
-      {[-2.2, 2.2].map((x) => (
-        <Cyl key={x} r={0.08} h={0.02} pos={[x, 0.17, 3.9]} color="#ddd" />
-      ))}
+      <Pcb size={[5.0, 0.16, 8.6]} color="#c62828" holes={false} />
+      <MountHoles pts={[[-2.2, -3.95], [2.2, -3.95], [-2.2, 3.95], [2.2, 3.95]]} y={0.16} r={0.15} ring={0.25} />
+      {/* painel TFT de 2,8" (50 × 69,2 mm): tabuleiro metálico da retroiluminação, vidro preto, a
+          saliência com o CI do ILI9341 do lado dos pinos e a fita que entra pela ranhura da placa */}
+      <DisplayPanel glass={PANEL} act={A} y0={0.17} h={0.29} tex={tex} side="#cfd3d6" sideMetal={1} ledge={1} fpc={{ w: 1.6, edge: 3.62, y: 0.16 }} />
+      <mesh position={[0, 0.162, 3.68]} rotation={[-Math.PI / 2, 0, 0]} scale={[1.75, 0.08, 1]} geometry={geo('plane1', () => new THREE.PlaneGeometry(1, 1))} material={mat('#050505', 0, 0.9)} />
+      {/* regulador 662K (U1), resistência e condensador junto à barra de pinos */}
+      <Chip pos={[1.68, 0.16, 3.78]} size={[0.29, 0.11, 0.16]} n={2} label="662K" />
+      <SmdParts list={[[-1.6, 3.78, 0, 'R'], [1.35, 3.78, Math.PI / 2, 'C']]} y={0.16} />
+      <PinLabels xs={def.pins.map((p) => p.pos[0])} names={['VCC', 'GND', 'CS', 'RESET', 'DC', 'SDI', 'SCK', 'LED', 'SDO']} z={3.8} y={0.162} h={0.075} />
+      {/* fila de 4 furos do leitor de cartões (SD_CS, MOSI, MISO, SCK) na outra ponta */}
+      <SolderPads pts={[-0.381, -0.127, 0.127, 0.381].map((x) => [x, -4.05])} y={0.16} r={0.085} blob={false} square0 />
+      <PinLabels xs={[-0.381, -0.127, 0.127, 0.381]} names={['CS', 'MOSI', 'MISO', 'SCK']} z={-3.78} y={0.162} h={0.07} />
       <HeaderPins pins={def.pins} base={0} up={0.45} />
     </group>
   )

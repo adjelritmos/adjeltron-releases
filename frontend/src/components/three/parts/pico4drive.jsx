@@ -2,7 +2,8 @@
 // saídas dos 4 drivers), soquete 2 × 20 para a Pico ao centro (USB da Pico virada para a direita),
 // conectores dos 13 GPIO em cima (GND preto, alimentação vermelho, sinais brancos; divisores e
 // alimentação à esquerda), 8 entradas analógicas em baixo à direita, botões ON / OFF e LED.
-import { Box, Cyl, RBox, Glow, GlowLed, HeaderPins, FemaleHeader, useCanvasTexture, useFrame, useRef, liveOf, inputOf, PITCH } from '../kit.jsx'
+import { Box, Cyl, Glow, GlowLed, HeaderPins, FemaleHeader, useCanvasTexture, useFrame, useRef, liveOf, inputOf, PITCH, Chip, ECap } from '../kit.jsx'
+import { PcbPlate, ScrewTerminal, Smds, Inductor, Sot23 } from './_boardKit.jsx'
 import def, { P4D, TERMINAL } from '@shared/parts/pico4drive.js'
 
 const { W, D, PCB_Y, TOP, HY } = P4D
@@ -11,6 +12,14 @@ const X = (x) => (x + W / 2) * PX
 const Z = (z) => (z + D / 2) * PX
 const male = def.pins.filter((p) => !p.conn)
 const byRow = (re) => male.filter((p) => re.test(p.id))
+const DRV_Z = [-1.2, -0.35, 0.5, 1.35]
+const MOUNT = [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([a, b]) => [a * (W / 2 - 0.35), b * (D / 2 - 0.35), 0.16])
+// condensadores dos drivers (1206), resistências de corrente e passivos do regulador
+const SMDS = [
+  ...DRV_Z.flatMap((z) => [[-2.75, z + 0.32, 0, 'K'], [-2.4, z, 1, 'r'], [-2.4, z + 0.3, 1, 'c']]),
+  [-1.3, -1.1, 1, 'c'], [-1.75, -0.45, 0, 'C'], [-1.45, -0.45, 0, 'C'], [-1.6, -1.4, 0, 'r'], [-2.0, 2.3, 0, 'r'],
+  [3.35, 1.25, 0, 'r'], [-0.4, 2.1, 1, 'c'], [0.45, 2.1, 1, 'r'],
+]
 
 function drawSilk(ctx) {
   ctx.fillStyle = '#fff'
@@ -62,6 +71,7 @@ function drawSilk(ctx) {
   ctx.fillText('4 × DRV8212P · 5–11 V', X(-0.9), Z(1.72))
 }
 
+// botão tátil 6 × 6 mm THT com capa redonda colorida (desce quando premido)
 function Button({ x, z, cap, read }) {
   const g = useRef()
   useFrame(() => {
@@ -69,10 +79,12 @@ function Button({ x, z, cap, read }) {
   })
   return (
     <group position={[x, TOP, z]}>
-      <Box size={[0.6, 0.35, 0.6]} pos={[0, 0.175, 0]} color="#2b2b2b" />
-      <Box size={[0.58, 0.02, 0.58]} pos={[0, 0.355, 0]} color="#bfc3c7" metal={0.8} />
+      <Box size={[0.6, 0.35, 0.6]} pos={[0, 0.175, 0]} color="#1e1e1e" rough={0.5} />
+      <Box size={[0.6, 0.02, 0.6]} pos={[0, 0.355, 0]} color="#c9cdd2" metal={1} rough={0.3} />
+      {[-1, 1].map((sx) => [-1, 1].map((sz) => <Box key={`${sx}${sz}`} size={[0.06, 0.04, 0.12]} pos={[sx * 0.32, 0.02, sz * 0.22]} color="#c9cdd2" metal={1} rough={0.3} />))}
+      <Cyl r={0.13} h={0.06} pos={[0, 0.39, 0]} color="#151515" seg={16} />
       <group ref={g}>
-        <Cyl r={0.17} h={0.2} pos={[0, 0.45, 0]} color={cap} />
+        <Cyl r={0.2} r2={0.22} h={0.2} pos={[0, 0.48, 0]} color={cap} rough={0.45} seg={20} />
       </group>
     </group>
   )
@@ -84,33 +96,17 @@ function Model({ part }) {
   const [sx, sz] = P4D.SOCK
   return (
     <group>
-      {/* espaçadores de nylon e placa */}
-      {[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([a, b], i) => (
-        <Cyl key={i} r={0.25} h={PCB_Y} pos={[a * (W / 2 - 0.35), PCB_Y / 2, b * (D / 2 - 0.35)]} color="#e8e8e8" seg={12} />
+      {/* espaçadores de nylon e placa com os 4 furos metalizados (dourados, ENIG) */}
+      {MOUNT.map(([x, z], i) => (
+        <Cyl key={i} r={0.25} h={PCB_Y} pos={[x, PCB_Y / 2, z]} color="#e8e8e8" seg={12} />
       ))}
-      <RBox size={[W, TOP - PCB_Y, D]} r={0.04} pos={[0, (PCB_Y + TOP) / 2, 0]} color="#1e6b34" rough={0.55} />
+      <PcbPlate id="p4d" w={W} d={D} t={TOP - PCB_Y} y={PCB_Y} r={0.1} holes={MOUNT} color="#1e6b34" ringColor="#d4b04a" />
       <mesh position={[0, TOP + 0.002, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[W, D]} />
         <meshBasicMaterial map={silk} transparent />
       </mesh>
-      {[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([a, b], i) => (
-        <Cyl key={`h${i}`} r={0.3} h={0.01} pos={[a * (W / 2 - 0.35), TOP + 0.004, b * (D / 2 - 0.35)]} color="#c9a227" metal={0.8} rough={0.3} seg={16} />
-      ))}
-      {/* borne de parafuso verde, 10 vias (entrada dos fios pela esquerda) */}
-      <group position={[P4D.TERM_X, 0, 0]} rotation={[0, Math.PI / 2, 0]}>
-        <RBox size={[5.06, 0.85, 0.75]} r={0.03} pos={[0, TOP + 0.425, 0]} color="#3fae49" rough={0.5} />
-        {TERMINAL.map((t, i) => {
-          const x = (i - 4.5) * 0.5
-          return (
-            <group key={t}>
-              <Cyl r={0.15} h={0.05} pos={[x, TOP + 0.86, 0.12]} color="#cfd2d6" metal={0.9} rough={0.25} seg={16} />
-              <Box size={[0.24, 0.02, 0.04]} pos={[x, TOP + 0.89, 0.12]} color="#555" />
-              <Box size={[0.3, 0.28, 0.02]} pos={[x, TOP + 0.24, -0.376]} color="#0d0d0d" />
-              <Box size={[0.26, 0.04, 0.02]} pos={[x, TOP + 0.13, -0.38]} color="#bfc3c7" metal={0.9} />
-            </group>
-          )
-        })}
-      </group>
+      {/* borne de parafuso verde, 10 vias de 5 mm (entrada dos fios pela esquerda) */}
+      <ScrewTerminal n={TERMINAL.length} pitch={0.5} pos={[P4D.TERM_X, TOP, 0]} rotY={Math.PI / 2} color="#3fae49" h={0.85} d={0.75} />
       {/* soquete da Pico: 2 conectores fêmea de 20 vias */}
       {[-0.889, 0.889].map((dz) => (
         <FemaleHeader key={dz} n={20} x={sx} z={sz + dz} top={HY} h={P4D.HDR_H} />
@@ -126,24 +122,24 @@ function Model({ part }) {
       <HeaderPins pins={byRow(/^AN\d$/)} base={TOP} plastic="#eeeeee" />
       <HeaderPins pins={byRow(/^AN\d\.V$/)} base={TOP} plastic="#c62828" />
       <HeaderPins pins={byRow(/^AN\d\.G$/)} base={TOP} plastic="#111" />
-      {/* 4 × DRV8212P (WSON 2 × 2 mm) + condensadores, junto ao borne */}
-      {[-1.6, -0.6, 0.4, 1.4].map((z, i) => (
-        <group key={i}>
-          <Box size={[0.2, 0.06, 0.2]} pos={[-2.75, TOP + 0.03, z]} color="#1a1a1a" />
-          <Box size={[0.32, 0.16, 0.16]} pos={[-2.75, TOP + 0.08, z + 0.32]} color="#b08a5a" />
-        </group>
+      {/* 4 × DRV8212P (WSON 2 × 2 mm) com os condensadores, junto ao borne */}
+      {DRV_Z.map((z, i) => (
+        <Chip key={i} pos={[-2.75, TOP, z]} size={[0.2, 0.06, 0.2]} pkg="qfn" n={4} />
       ))}
-      {/* regulador AP62200 + bobina 4,7 µH, MOSFETs de proteção, ATtiny412 */}
-      <Box size={[0.45, 0.3, 0.45]} pos={[-1.75, TOP + 0.15, -0.95]} color="#3a3a3a" rough={0.4} />
-      <Box size={[0.16, 0.06, 0.12]} pos={[-1.3, TOP + 0.03, -0.95]} color="#1a1a1a" />
-      <Box size={[0.32, 0.08, 0.32]} pos={[-2.25, TOP + 0.04, 2.0]} color="#1a1a1a" />
-      <Box size={[0.32, 0.08, 0.32]} pos={[-2.25, TOP + 0.04, 2.45]} color="#1a1a1a" />
-      <Box size={[0.5, 0.12, 0.4]} pos={[0.1, TOP + 0.06, 2.1]} color="#1a1a1a" />
+      <Smds id="p4d" y={TOP} items={SMDS} />
+      {/* regulador AP62200 (SOT-563) + bobina de 4,7 µH, condensador de entrada, MOSFETs de proteção
+          (SOT-23) e ATtiny412 (SOIC-8) */}
+      <Inductor pos={[-2.02, TOP, -0.95]} size={0.45} h={0.3} label="4R7" />
+      <Chip pos={[-1.55, TOP, -1.15]} size={[0.16, 0.06, 0.12]} n={3} />
+      <ECap pos={[-1.0, TOP, -0.2]} r={0.25} h={0.55} color="#1b1b1b" stripe="#cfd3d8" />
+      <Sot23 pos={[-2.25, TOP, 2.0]} rotY={Math.PI / 2} label="A09T" />
+      <Sot23 pos={[-2.25, TOP, 2.45]} rotY={Math.PI / 2} label="A09T" />
+      <Chip pos={[0.1, TOP, 2.1]} size={[0.49, 0.15, 0.39]} n={4} label="T412" />
       {/* 74HC4051 (SOIC-16) entre as filas do soquete, por baixo da Pico */}
-      <Box size={[1.0, 0.14, 0.4]} pos={[sx + 0.6, TOP + 0.07, sz]} color="#1a1a1a" />
+      <Chip pos={[sx + 0.6, TOP, sz]} size={[1.0, 0.15, 0.39]} n={8} label="HC4051" />
       {/* botões e LED de alimentação */}
       <Button x={P4D.ON[0]} z={P4D.ON[1]} cap="#3ddc64" read={() => !!(id && inputOf(id).pressed)} />
-      <Button x={P4D.OFF[0]} z={P4D.OFF[1]} cap="#e53935" read={() => false} />
+      <Button x={P4D.OFF[0]} z={P4D.OFF[1]} cap="#e53935" read={() => !!(id && inputOf(id).off)} />
       <GlowLed pos={[-2.0, TOP + 0.03, 2.55]} size={[0.16, 0.06, 0.1]} color="#33ff66" read={() => (id && liveOf(id)?.pwr ? 1 : 0)} />
       <Glow pos={[3.35, TOP + 0.03, 1.45]} color="#ff3030" read={() => (id && liveOf(id)?.out?.some((o) => o.ocp) ? 1 : 0)}>
         <boxGeometry args={[0.16, 0.06, 0.1]} />

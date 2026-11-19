@@ -1,8 +1,9 @@
 // Motor TT 1:48 sem roda: caixa redutora amarela, motor metálico (lata com lados achatados) com a
 // tampa de plástico branca, braçadeira transparente à volta do motor e veio duplo em D branco
 // (segundo z) que roda com os mounts "shaft" (−z) e "shaft2" (+z, mesmo veio).
+// Caixa em duas metades com a junta, parafusos de cruz e porcas embutidas, terminais furados.
 // TTModel serve também o motor TT com encoder (motorTTEnc.jsx): disco magnético + placa atrás.
-import { Box, Cyl, RBox, useFrame, useRef, useMemo, mat, liveOf, D2R, THREE } from '../kit.jsx'
+import { Box, Cyl, RBox, useFrame, useRef, useMemo, mat, liveOf, D2R, THREE, METAL } from '../kit.jsx'
 import { mountRotNow } from '../../../functions/mechLive.js'
 import { MotorOverlay } from './motorEnc.jsx'
 import def, { TT, ttClip } from '@shared/parts/motorTT.js'
@@ -69,7 +70,20 @@ export function TTModel({ part, enc = false, pins = def.pins }) {
       ))}
       {/* parafusos que fecham a caixa e furos de fixação de lado a lado */}
       {[[-1.2, 0.8], [1.9, 0.8], [1.9, -0.8], [-1.2, -0.8]].map(([x, dy], i) => (
-        <Cyl key={i} r={0.1} h={1.95} pos={[x, A + dy, 0]} rot={[Math.PI / 2, 0, 0]} color="#9aa0a6" metal={0.8} seg={8} />
+        <group key={i} position={[x, A + dy, 0]}>
+          <Cyl r={0.1} h={1.95} rot={[Math.PI / 2, 0, 0]} color="#9aa0a6" metal={0.8} seg={8} />
+          {/* cabeça de cruz do parafuso (lado +z) e porca sextavada embutida (lado −z) */}
+          <Cyl r={0.17} h={0.06} pos={[0, 0, 0.975]} rot={[Math.PI / 2, 0, 0]} color={METAL.nickel} metal={1} rough={0.3} seg={14} />
+          <Box size={[0.2, 0.03, 0.02]} pos={[0, 0, 1.006]} color="#3a3d40" />
+          <Box size={[0.03, 0.2, 0.02]} pos={[0, 0, 1.006]} color="#3a3d40" />
+          <Cyl r={0.16} h={0.04} pos={[0, 0, -0.96]} rot={[Math.PI / 2, 0, 0]} color="#3b3200" seg={6} />
+        </group>
+      ))}
+      {/* junta das duas metades da caixa e nervuras de reforço moldadas */}
+      <Box size={[4.12, 2.21, 0.012]} pos={[0.5, A, 0]} color="#8a7a14" rough={0.6} />
+      <Box size={[4.41, 1.92, 0.012]} pos={[0.5, A, 0]} color="#8a7a14" rough={0.6} />
+      {[-1, 1].map((s) => (
+        <Box key={`r${s}`} size={[1.2, 0.06, 0.04]} pos={[1.05, A + s * 0.35, s * 0.96]} color={YEL2} rough={0.5} />
       ))}
       {[[0.9, 0.0], [-0.5, -0.55]].map(([x, dy], i) => (
         <Cyl key={`h${i}`} r={0.16} h={1.93} pos={[x, A + dy, 0]} rot={[Math.PI / 2, 0, 0]} color="#3b3200" seg={12} />
@@ -92,7 +106,10 @@ export function TTModel({ part, enc = false, pins = def.pins }) {
       <Cyl r={0.08} h={0.1} pos={[TT.cap - 0.3, A, 0]} rot={rotX} color="#9aa0a6" metal={0.9} rough={0.3} seg={10} />
       {!enc &&
         pins.map((p) => (
-          <Box key={p.id} size={[0.22, 0.3, 0.12]} pos={[p.pos[0] + 0.06, p.pos[1], p.pos[2]]} color="#d9a441" metal={0.9} rough={0.3} />
+          <group key={p.id} position={[p.pos[0] + 0.06, p.pos[1], p.pos[2]]}>
+            <Box size={[0.22, 0.3, 0.05]} color="#d9a441" metal={0.9} rough={0.3} />
+            <Cyl r={0.045} h={0.06} pos={[-0.03, 0.06, 0]} rot={[Math.PI / 2, 0, 0]} color="#151515" seg={10} />
+          </group>
         ))}
       {enc && (
         <group>

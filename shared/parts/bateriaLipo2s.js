@@ -16,8 +16,11 @@ export default {
     { id: '+', label: '+ (ficha T, vermelho)', pos: [6.25, 0.9, -0.35], kind: 'bat+' },
     { id: '-', label: '− (ficha T, preto)', pos: [6.25, 0.9, 0.35], kind: 'bat-' },
   ],
-  config: { charge: 100 },
-  fields: [{ key: 'charge', label: 'Carga', type: 'range', min: 0, max: 100, step: 5, unit: '%' }],
+  config: { charge: 100, color: '#1565c0' },
+  fields: [
+    { key: 'charge', label: 'Carga', type: 'range', min: 0, max: 100, step: 5, unit: '%' },
+    { key: 'color', label: 'Cor da manga', type: 'color' },
+  ],
   mass: 120,
   collider: { size: [10.5, 1.8, 3.4], pos: [0, 0.9, 0] },
   view2d: { view: 'top', x: [-5.4, 6.65], z: [-1.85, 1.85] },

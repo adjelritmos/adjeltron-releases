@@ -1,5 +1,6 @@
-// Pessoa (boneco estilizado) da maquete: sapatos, pernas com joelhos, calças, camisola, braços
-// com cotovelos, mãos, pescoço, cabeça com cabelo, olhos e nariz. Olha para +x.
+// Pessoa (boneco estilizado) da maquete: sapatilhas com sola e atacadores, pernas com joelhos,
+// calças com cinto e fivela, camisola com bainha, braços com cotovelos, mãos, pescoço, cabeça
+// com cabelo, olhos (com o branco), sobrancelhas, nariz, boca e orelhas. Olha para +x.
 // Durante a simulação desloca-se para inputs[id] = { px, pz, yaw } (arrastada com o rato, ver
 // functions/walkDrag.js) e, sempre que se mexe (também ao arrastá-la na construção), anda:
 // pernas e braços balançam com a velocidade.
@@ -87,18 +88,26 @@ function Model({ part }) {
               <group ref={knees[j]} position={[0, -3.4, 0]}>
                 <Cap r={0.46} len={2.5} pos={[0, -1.5, 0]} color={calc} />
                 <Cap r={0.36} len={0.3} pos={[0, -2.95, 0]} color={pele} />
-                {/* sapato */}
+                {/* sapatilha: gáspea, sola de borracha clara e atacadores */}
                 <mesh position={[0.32, -3.4, 0]} scale={[1, 0.55, 0.75]} castShadow geometry={geo('shoe', () => new THREE.CapsuleGeometry(0.48, 0.75, 4, 12).rotateZ(Math.PI / 2))} material={mat(sap, 0, 0.45)} />
+                <mesh position={[0.32, -3.6, 0]} scale={[1.04, 0.14, 0.8]} geometry={geo('shoe', () => new THREE.CapsuleGeometry(0.48, 0.75, 4, 12).rotateZ(Math.PI / 2))} material={mat('#ece8e0', 0, 0.7)} />
+                <Box size={[0.4, 0.04, 0.16]} pos={[0.55, -3.14, 0]} rot={[0, 0, -0.35]} color="#f2f2f2" />
               </group>
             </group>
           ))}
           {/* anca / cinto */}
           <Cap r={0.75} len={0.5} pos={[0, 7.45, 0]} scale={[0.85, 0.9, 1.45]} color={calc} />
-          <Cyl r={1.02} h={0.22} pos={[0, 7.95, 0]} color="#5b3a22" rough={0.5} seg={24} />
+          <group position={[0, 7.95, 0]} scale={[0.68, 1, 1.08]}>
+            <Cyl r={1.02} h={0.22} color="#5b3a22" rough={0.5} seg={24} />
+          </group>
+          {/* fivela do cinto */}
+          <Box size={[0.06, 0.26, 0.36]} pos={[0.7, 7.95, 0]} color="#c9ced3" metal={0.9} rough={0.3} />
           {/* tronco (camisola), mais largo nos ombros */}
           <group position={[0, 9.75, 0]} scale={[0.62, 1, 1]}>
             <Cyl r={1.25} r2={1.02} h={3.6} pos={[0, 0, 0]} color={top} rough={0.85} seg={28} />
             <Ball r={1.25} pos={[0, 1.8, 0]} color={top} rough={0.85} scale={[1, 0.42, 1]} />
+            {/* bainha da camisola (por cima do cinto) */}
+            <Cyl r={1.07} h={0.16} pos={[0, -1.72, 0]} color={top} rough={0.9} seg={28} />
           </group>
           {/* gola */}
           <Cyl r={0.42} h={0.25} pos={[0, 12.0, 0]} color={top} rough={0.85} seg={16} />
@@ -111,6 +120,7 @@ function Model({ part }) {
           {/* olhos, sobrancelhas, nariz e orelhas */}
           {[-0.33, 0.33].map((z) => (
             <group key={z}>
+              <Ball r={0.15} pos={[0.9, 13.55, z]} color="#f4f1ea" rough={0.4} scale={[0.5, 0.75, 1]} />
               <Ball r={0.11} pos={[0.92, 13.55, z]} color="#20160f" rough={0.3} />
               <Box size={[0.05, 0.07, 0.3]} pos={[0.95, 13.8, z]} color={cab} />
               <Ball r={0.17} pos={[0.05, 13.4, z * 2.7]} color={pele} scale={[0.6, 1, 0.45]} />

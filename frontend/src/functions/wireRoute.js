@@ -441,7 +441,7 @@ function insidePlate(pl, p, m = 0.4) {
   return p.x > pl.x[0] - m && p.x < pl.x[1] + m && p.z > pl.z[0] - m && p.z < pl.z[1] + m
 }
 // devolve os pontos (no referencial do contentor) para atravessar a placa, ou null
-function plateCrossing(plates, A, B, seed) {
+function plateCrossing(plates, A, B, seed, obs = []) {
   for (const pl of plates) {
     const a = A.clone().applyMatrix4(pl.toLocal)
     const b = B.clone().applyMatrix4(pl.toLocal)
@@ -451,12 +451,28 @@ function plateCrossing(plates, A, B, seed) {
     if (below(a) && above(b)) [lo, hi] = [a, b]
     else if (below(b) && above(a)) [lo, hi] = [b, a]
     else continue
-    // candidatos: furos livres e o ponto mais próximo da borda
+    // o fio sobe na vertical pela passagem: a coluna por cima da placa tem de estar livre de peças
+    // (com folga) — sem isto subia, p.ex., à frente de um sonar, entre os dois transdutores
+    const _w = new THREE.Vector3()
+    const free = (x, z) => {
+      _w.set(x, pl.y[1] + 0.1, z).applyMatrix4(pl.toParent)
+      for (const o of obs) {
+        if (o.hi[1] <= _w.y + 0.05 || o.lo[1] > _w.y + 12) continue // a própria placa e o que fica muito acima
+        if (inFoot(o, _w.x, _w.z, COL_PAD)) return false
+      }
+      return true
+    }
+    // candidatos: furos livres e pontos à volta da borda (de 0,5 em 0,5 cm)
     const cands = []
-    for (const [hx, hz] of pl.holes || []) if (!pl.blocked?.(hx, hz)) cands.push({ x: hx, z: hz, hole: true })
-    const edge = nearestOnRoundRect(pl, lo.x, lo.z, { pad: 0.35 })
-    if (!pl.blockedBelow?.(edge.x, edge.z)) cands.push({ ...edge, hole: false })
-    if (!cands.length) cands.push({ ...edge, hole: false })
+    for (const [hx, hz] of pl.holes || []) if (!pl.blocked?.(hx, hz) && free(hx, hz)) cands.push({ x: hx, z: hz, hole: true })
+    const pad = 0.35
+    const [x0, x1] = [pl.x[0] - pad, pl.x[1] + pad]
+    const [z0, z1] = [pl.z[0] - pad, pl.z[1] + pad]
+    const per = []
+    for (let x = x0; x <= x1; x += 0.5) per.push({ x, z: z0 }, { x, z: z1 })
+    for (let z = z0; z <= z1; z += 0.5) per.push({ x: x0, z }, { x: x1, z })
+    for (const e of per) if (!pl.blockedBelow?.(e.x, e.z) && free(e.x, e.z)) cands.push({ ...e, hole: false })
+    if (!cands.length) cands.push({ ...nearestOnRoundRect(pl, lo.x, lo.z, { pad }), hole: false })
     let best = null
     for (const c of cands) {
       // por baixo da placa o fio fica pendurado: preferir passagens perto da ponta de baixo
@@ -508,16 +524,48 @@ function enclosers(obs, pts) {
 // ponta debaixo de uma peça (motor por baixo da base, ficha de servo por baixo do prato): o fio
 // sai primeiro para fora da planta dessa peça, à mesma altura, pelo lado que fica mais a jeito
 const LID = 4 // cm: peça por cima da ponta até esta altura conta como tampa
+const COL_PAD = 0.4 // folga lateral da coluna por onde o fio sobe depois de sair de baixo da tampa
+// a coluna vertical em (x, z), de y0 até y1, está livre de peças (com folga)? A tampa não conta.
+function columnFree(obs, lid, x, z, y0, y1) {
+  for (const o of obs) {
+    if (o === lid || o.lo[1] > y1 || o.hi[1] < y0) continue
+    if (inFoot(o, x, z, COL_PAD)) return false
+  }
+  return true
+}
 function escapeUnder(s, other, obs) {
   let q = s
   for (let it = 0; it < 4; it++) {
     const lid = obs.find((o) => o.lo[1] > q.y && o.lo[1] < q.y + LID && inFoot(o, q.x, q.z, PAD))
     if (!lid) break
+    // o fio sai pela borda e depois sobe: a subida não pode passar rente a outras peças (entre
+    // os transdutores de um sonar, colado a uma roda…). Uma saída com a coluna ocupada desliza ao
+    // longo da borda até ao sítio livre mais próximo (o desvio conta no custo).
+    const y1 = lid.hi[1] + CLEAR + 0.3
     let best = null
     for (const c of edgeExits(lid, q)) {
-      const cost = Math.hypot(c.x - q.x, c.z - q.z) + 0.5 * Math.hypot(c.x - other.x, c.z - other.z)
-      if (!best || cost < best.cost) best = { ...c, cost }
+      // direção ao longo da borda (perpendicular à saída)
+      const ox = c.x - q.x
+      const oz = c.z - q.z
+      const ol = Math.hypot(ox, oz) || 1
+      const tx = -oz / ol
+      const tz = ox / ol
+      let slide = null
+      for (let k = 0; k <= 40 && slide == null; k++) {
+        for (const sg of k ? [1, -1] : [1]) {
+          const x = c.x + tx * sg * k * 0.25
+          const z = c.z + tz * sg * k * 0.25
+          if (columnFree(obs, lid, x, z, q.y, y1)) {
+            slide = { x, z, d: k * 0.25 }
+            break
+          }
+        }
+      }
+      if (!slide) continue
+      const cost = Math.hypot(c.x - q.x, c.z - q.z) + 1.5 * slide.d + 0.5 * Math.hypot(slide.x - other.x, slide.z - other.z)
+      if (!best || cost < best.cost) best = { x: slide.x, z: slide.z, cost }
     }
+    if (!best) break
     q = new THREE.Vector3(best.x, q.y, best.z)
   }
   return q === s ? null : q
@@ -603,7 +651,7 @@ export function routeWire(endA, endB, { obstacles = [], plates = [], seed = 0, v
       return q
     })
   }
-  const cross = vias ? null : plateCrossing(plates, a.start, b.start, seed)
+  const cross = vias ? null : plateCrossing(plates, a.start, b.start, seed, live)
   if (!cross) {
     const ea = escapeUnder(a.start, vias?.[0] || b.start, live)
     const eb = escapeUnder(b.start, vias?.[vias.length - 1] || a.start, live)

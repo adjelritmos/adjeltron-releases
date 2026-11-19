@@ -1,61 +1,107 @@
 // Peças de construção dos modelos do grupo F (não é um componente): TO-92 com marcação,
 // TO-220 genérico, módulo lógico abstrato com símbolo impresso, textura de canvas viva.
-import { Box, RBox, Cyl, Leg, useLabel, PITCH, THREE, useFrame, useMemo, useRef, liveOf } from '../kit.jsx'
+import { RBox, PITCH, THREE, useFrame, useMemo, useRef, liveOf, geo, mat, mergedGeo, METAL } from '../kit.jsx'
+import { Mark, Wires } from './_dip.jsx'
+import { To220 } from './_to220.jsx'
 
-// ---------- TO-92: meio cilindro preto, face plana com a marcação virada para +x ----------
-const T92 = { y0: 0.36, h: 0.5, r: 0.24 }
-export function To92F({ line1, line2, color = '#1b1b1b' }) {
-  const label = useLabel([{ text: line1, font: `bold ${line1.length > 6 ? 54 : 64}px Arial`, y: 80 }, { text: line2, font: 'bold 44px Arial', y: 170 }], 256, 256)
+// ---------- TO-92: corpo em "D" (círculo de 4,8 mm cortado pela face plana), 4,5 mm de
+// altura, arestas boleadas; marcação em 2 linhas na face plana virada para +x; pernas que saem
+// do corpo a 1,27 mm e abrem para o passo de 2,54 mm ----------
+const T92 = { y0: 0.36, h: 0.5, r: 0.24, c: 0.12 }
+const to92Geo = () =>
+  geo('to92Body', () => {
+    const b = 0.015
+    const r = T92.r - b
+    const a0 = Math.acos((T92.c - b) / r)
+    const s = new THREE.Shape()
+    // face plana em u = −b (com o boleado fica em 0), arco para trás (−x)
+    s.moveTo(-b, -r * Math.sin(a0))
+    s.lineTo(-b, r * Math.sin(a0))
+    for (let i = 1; i < 20; i++) {
+      const t = a0 + ((2 * Math.PI - 2 * a0) * i) / 20
+      s.lineTo(-T92.c + r * Math.cos(t), r * Math.sin(t))
+    }
+    const g = new THREE.ExtrudeGeometry(s, { depth: T92.h - 2 * b, bevelEnabled: true, bevelThickness: b, bevelSize: b, bevelSegments: 2, curveSegments: 6 })
+    g.rotateX(-Math.PI / 2)
+    g.translate(0, T92.y0 + b, 0)
+    g.computeVertexNormals()
+    return g
+  })
+const P3 = [[0, 0, PITCH], [0, 0, 0], [0, 0, -PITCH]]
+// x = posição da face plana; pins = posições dos 3 pinos (por omissão a 0,1" ao longo de z)
+export function To92F({ line1, line2, color = '#1b1b1b', x = 0.11, pins = P3 }) {
+  const key = `${x}|${pins.map((p) => p.join(',')).join(';')}`
+  const lines = [{ text: line1, font: `bold ${line1.length > 6 ? 50 : 60}px Arial`, y: 50 }]
+  if (line2) lines.push({ text: line2, font: 'bold 44px Arial', y: 112 })
   return (
     <group>
-      {[PITCH, 0, -PITCH].map((z) => (
-        <Leg key={z} from={[0, 0, z]} to={[-0.05, T92.y0 + 0.02, z * 0.55]} r={0.022} />
-      ))}
-      <mesh position={[0, T92.y0 + T92.h / 2, 0]} castShadow>
-        <cylinderGeometry args={[T92.r, T92.r, T92.h, 24, 1, false, Math.PI, Math.PI]} />
-        <meshStandardMaterial color={color} roughness={0.6} />
-      </mesh>
-      <mesh position={[0.001, T92.y0 + T92.h / 2, 0]} rotation={[0, Math.PI / 2, 0]}>
-        <planeGeometry args={[2 * T92.r, T92.h]} />
-        <meshStandardMaterial color={color} roughness={0.6} />
-      </mesh>
-      <mesh position={[0.003, T92.y0 + T92.h / 2, 0]} rotation={[0, Math.PI / 2, 0]}>
-        <planeGeometry args={[2 * T92.r * 0.92, T92.h * 0.9]} />
-        <meshBasicMaterial map={label} transparent />
-      </mesh>
+      <Wires
+        id={`to92${key}`}
+        r={0.022}
+        lines={pins.map((p) => {
+          const zb = Math.sign(p[2]) * 0.127
+          const xb = x - T92.c
+          return [p, [p[0], 0.16, p[2]], [xb, 0.27, zb], [xb, T92.y0 + 0.03, zb]]
+        })}
+      />
+      <group position={[x, 0, 0]}>
+        <mesh geometry={to92Geo()} material={mat(color, 0, 0.55)} castShadow receiveShadow />
+        <Mark lines={lines} px={[256, 160]} pos={[0.002, T92.y0 + T92.h * 0.56, 0]} rot={[0, Math.PI / 2, 0]} w={0.38} h={0.24} color="#d4d4d4" />
+      </group>
     </group>
   )
 }
 
-// ---------- TO-220 genérico (MOSFET de potência): marcação à frente, aba metálica atrás ----------
+// ---------- TO-220 genérico (MOSFET de potência): o mesmo encapsulamento dos reguladores ----------
 export function To220F({ line1, line2, heatsink }) {
-  const label = useLabel([{ text: line1, font: `bold ${line1.length > 7 ? 46 : 56}px Arial`, y: 90 }, { text: line2, font: 'bold 38px Arial', y: 170 }], 256, 256)
+  return <To220 text={line1} sub={line2} heatsink={heatsink} />
+}
+
+// ---------- borne de 4 mm (painel de instrumentos): base sextavada, capa serrilhada da cor do
+// polo, casquilho de latão; a boca do furo fica em `pos` virada para +x ----------
+const postGeo = () =>
+  geo('bindPost', () => {
+    // perfil (raio, comprimento ao longo de +x) da capa serrilhada, com o furo de 4 mm
+    const pts = [[0.1, -0.2], [0.27, -0.2], [0.27, -0.06], [0.24, -0.02], [0.2, 0], [0.11, 0], [0.1, -0.02]].map(([r, y]) => new THREE.Vector2(r, y))
+    const g = new THREE.LatheGeometry(pts, 18)
+    g.rotateZ(-Math.PI / 2)
+    g.computeVertexNormals()
+    return g
+  })
+export function BindingPost({ pos, color, panel }) {
+  const [x, y, z] = pos
+  const xp = panel ?? x - 0.05 // face do painel
+  const k = Math.max(0.04, x - xp) / 0.2
   return (
     <group>
-      {[PITCH, 0, -PITCH].map((z) => (
-        <group key={z}>
-          <Leg from={[0, 0, z]} to={[0, 0.3, z]} r={0.03} />
-          <Box size={[0.05, 0.16, 0.08]} pos={[0, 0.38, z]} color="#cfcfcf" metal={0.85} rough={0.3} />
-        </group>
-      ))}
-      <Box size={[0.45, 0.9, 1.0]} pos={[0, 0.9, 0]} color="#161616" rough={0.55} />
-      <mesh position={[0.227, 0.9, 0]} rotation={[0, Math.PI / 2, 0]}>
-        <planeGeometry args={[0.92, 0.82]} />
-        <meshBasicMaterial map={label} transparent />
-      </mesh>
-      <Box size={[0.13, 1.55, 1.0]} pos={[-0.16, 1.225, 0]} color="#c9ccd1" metal={0.9} rough={0.3} />
-      <Cyl r={0.18} h={0.15} pos={[-0.16, 1.65, 0]} rot={[0, 0, Math.PI / 2]} color="#1a1a1a" />
-      {heatsink && (
-        <group position={[-0.32, 1.25, 0]}>
-          <Box size={[0.12, 1.9, 1.5]} color="#2a2a2e" metal={0.5} rough={0.5} />
-          {[-0.6, -0.3, 0, 0.3, 0.6].map((z) => (
-            <Box key={z} size={[0.7, 1.9, 0.07]} pos={[-0.38, 0, z]} color="#2a2a2e" metal={0.5} rough={0.5} />
-          ))}
-        </group>
-      )}
+      {/* anilha sextavada encostada ao painel */}
+      <mesh position={[xp + 0.01, y, z]} rotation={[0, 0, Math.PI / 2]} geometry={geo('bindHex', () => new THREE.CylinderGeometry(0.31, 0.31, 0.02, 6))} material={mat(METAL.nickel, 1, 0.32)} />
+      <mesh position={[x, y, z]} scale={[k, 1, 1]} geometry={postGeo()} material={mat(color, 0, 0.42)} castShadow />
+      <mesh position={[x - 0.004, y, z]} rotation={[0, 0, Math.PI / 2]} geometry={geo('bindSleeve', () => new THREE.CylinderGeometry(0.1, 0.1, 0.008, 14, 1, true))} material={mat(METAL.brass, 1, 0.3)} />
+      <mesh position={[x - 0.006, y, z]} rotation={[0, Math.PI / 2, 0]} geometry={geo('bindBore', () => new THREE.CircleGeometry(0.1, 14))} material={mat('#0a0a0a', 0, 0.9)} />
+      <mesh position={[x - 0.004, y, z]} rotation={[0, Math.PI / 2, 0]} geometry={geo('bindPin', () => new THREE.RingGeometry(0.035, 0.06, 12))} material={mat(METAL.brass, 1, 0.3)} />
     </group>
   )
 }
+
+// ---------- botão rotativo de instrumento: saia lisa, corpo serrilhado e topo boleado ----------
+export const knobGeo = (r = 0.32, h = 0.22) =>
+  geo(`instrKnob${r},${h}`, () => {
+    const p = [[0.001, h], [r * 0.82, h], [r * 0.93, h - 0.02], [r * 0.95, h - 0.05], [r * 0.95, 0.06], [r * 1.12, 0.05], [r * 1.12, 0], [0.001, 0]]
+    const g = new THREE.LatheGeometry(p.map(([a, b]) => new THREE.Vector2(a, b)).reverse(), 48)
+    // serrilhado: estrias ao longo do corpo (só nos vértices da parede lateral)
+    const pos = g.attributes.position
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i)
+      const z = pos.getZ(i)
+      if (Math.abs(Math.hypot(x, z) - r * 0.95) > 1e-4) continue
+      const k = 1 + 0.035 * Math.cos(Math.atan2(z, x) * 24)
+      pos.setX(i, x * k)
+      pos.setZ(i, z * k)
+    }
+    g.computeVertexNormals()
+    return g
+  })
 
 // ---------- textura de canvas redesenhada quando os dados mudam (lidos a cada frame) ----------
 export function useLiveCanvas(w, h, draw, read) {
@@ -231,6 +277,8 @@ export function drawModule(ctx, w, h, { kind, fn, pins, W, D, z0, title, live })
   }
 }
 
+const hdrBlk = () => geo('gull', () => new THREE.BoxGeometry(1, 1, 1))
+
 // módulo lógico: corpo branco, pernas em fila à frente, símbolo impresso por cima e um LED
 // vermelho que acende com a saída a HIGH
 export function LogicModule({ part, def, kind, fn, title }) {
@@ -262,20 +310,18 @@ export function LogicModule({ part, def, kind, fn, title }) {
   })
   return (
     <group>
-      {def.pins.map((p) => (
-        <group key={p.id}>
-          <Leg from={p.pos} to={[p.pos[0], y0 + 0.02, p.pos[2]]} r={0.025} />
-          <Box size={[0.2, 0.06, 0.2]} pos={[p.pos[0], y0 - 0.03, p.pos[2]]} color="#111" />
-        </group>
-      ))}
+      {/* barra de pinos macho por baixo: espaçador de plástico preto e pinos dourados quadrados */}
+      <mesh geometry={mergedGeo(`lmHdrB${def.type}`, () => def.pins.map((p) => [hdrBlk(), [p.pos[0], y0 - 0.05, p.pos[2]], [0, 0, 0], [0.254, 0.1, 0.25]]))} material={mat('#151515', 0, 0.5)} castShadow />
+      <mesh geometry={mergedGeo(`lmHdrP${def.type}`, () => def.pins.map((p) => [hdrBlk(), [p.pos[0], (p.pos[1] + y0 + 0.02) / 2, p.pos[2]], [0, 0, 0], [0.064, y0 + 0.02 - p.pos[1], 0.064]]))} material={mat(METAL.gold, 1, 0.25)} />
       <RBox size={[W, H - y0, D]} r={0.04} pos={[0, y0 + (H - y0) / 2, z0]} color="#efefec" rough={0.5} />
       <mesh position={[0, H + 0.002, z0]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[W - 0.02, D - 0.02]} />
         <meshStandardMaterial map={tex} roughness={0.6} />
       </mesh>
-      <mesh position={[W / 2 - 0.14, H + 0.03, z0 - D / 2 + 0.14]}>
-        <cylinderGeometry args={[0.06, 0.06, 0.06, 16]} />
-        <meshStandardMaterial ref={led} color="#5a1a1a" emissive="#ff3b30" emissiveIntensity={0} toneMapped={false} />
+      {/* LED SMD 0805 vermelho: almofadas estanhadas e lente difusa */}
+      <mesh position={[W / 2 - 0.14, H + 0.008, z0 - D / 2 + 0.14]} geometry={mergedGeo('lmLedPads', () => [-1, 1].map((k) => [hdrBlk(), [k * 0.07, 0, 0], [0, 0, 0], [0.05, 0.016, 0.12]]))} material={mat(METAL.tin, 1, 0.3)} />
+      <mesh position={[W / 2 - 0.14, H + 0.03, z0 - D / 2 + 0.14]} geometry={geo('lmLed', () => new THREE.BoxGeometry(0.12, 0.05, 0.1))}>
+        <meshStandardMaterial ref={led} color="#5a1a1a" emissive="#ff3b30" emissiveIntensity={0} roughness={0.25} toneMapped={false} />
       </mesh>
     </group>
   )

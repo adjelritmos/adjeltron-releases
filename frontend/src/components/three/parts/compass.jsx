@@ -1,20 +1,32 @@
-// GY-271 (HMC5883L / QMC5883L): placa azul quadrada com o chip de 3 × 3 mm e as setas X/Y;
-// no 2D uma agulha mostra o norte magnético visto pelo sensor.
-import { Box } from '../kit.jsx'
+// GY-271 (HMC5883L / QMC5883L): placa azul quadrada de 14 mm com o magnetómetro LCC de
+// 3 × 3 mm, condensadores, eixos X/Y serigrafados e 5 pinos; no 2D uma agulha mostra o
+// norte magnético visto pelo sensor.
+import { Chip, SilkText } from '../kit.jsx'
 import { hmc5883l as dH, qmc5883l as dQ } from '@shared/parts/compass.js'
-import { i2cModuleUI, Silk } from './_groupG.jsx'
+import { Breakout } from './_analogModule.jsx'
+
+const T = 0.12
+const board = { x: [-0.7, 0.7], z: [-0.7, 0.7], color: '#1f4fb4' }
 
 function make(def, chip) {
-  function Sensor({ T }) {
+  function Model({ part }) {
     return (
-      <group>
-        <Box size={[0.3, 0.09, 0.3]} pos={[0.1, T + 0.045, -0.15]} color="#1c1c1c" rough={0.4} />
-        <Silk text="GY-271" pos={[0.1, T + 0.003, 0.25]} w={0.6} h={0.14} />
-        <Silk text={chip} pos={[-0.45, T + 0.003, -0.4]} w={0.5} h={0.11} />
-      </group>
+      <Breakout
+        part={part}
+        def={def}
+        board={board}
+        T={T}
+        holes={[[-0.48, -0.48, 0.15], [0.48, -0.48, 0.15]]}
+        led={[-0.55, 0.0]}
+        passives={[[-0.33, 0.0, 'c'], [0.35, 0.0, 'c'], [0.3, -0.2, 'c', Math.PI / 2], [0, -0.52, 'c']]}
+        silk={[{ text: 'GY-271', pos: [0, -0.64], w: 0.36, d: 0.1 }]}
+        pinLabels={['VCC', 'GND', 'SCL', 'SDA', 'DRDY']}
+      >
+        <Chip pos={[0, T, -0.2]} size={[0.3, 0.09, 0.3]} pkg="qfn" n={4} label={chip === 'HMC5883L' ? 'L883' : 'DA5883'} />
+        <SilkText lines={[{ text: 'X →', font: 'bold 36px Arial', x: 64, y: 32 }, { text: 'Y ↑', font: 'bold 36px Arial', x: 190, y: 32 }]} px={[256, 64]} pos={[0, T + 0.002, 0.02]} w={0.36} d={0.09} />
+      </Breakout>
     )
   }
-  const ui = i2cModuleUI({ def, board: { x: [-0.7, 0.7], z: [-0.7, 0.7], color: '#1f4fb4' }, Sensor, holes: [[-0.48, -0.48], [0.48, -0.48]], led: [-0.45, 0.05], reg: false })
   function Overlay2D({ info, input, live }) {
     if (!live?.powered) return null
     const h = ((input?.value ?? 0) * Math.PI) / 180
@@ -31,7 +43,7 @@ function make(def, chip) {
       </g>
     )
   }
-  return { ...ui, Overlay2D }
+  return { type: def.type, Model, Overlay2D }
 }
 
 export const hmc5883l = make(dH, 'HMC5883L')

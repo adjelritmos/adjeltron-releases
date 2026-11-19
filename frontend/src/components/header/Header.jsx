@@ -144,7 +144,13 @@ function ProjectsMenu() {
   }
   // .adjel → abre como projeto atual (fica por guardar: "Guardar" põe-no nos meus projetos)
   const importFile = async () => {
-    const file = await pickProjectFile()
+    let file
+    try {
+      file = await pickProjectFile()
+    } catch (e) {
+      useStore.getState().notify(e?.message || String(e))
+      return
+    }
     if (!file) return
     let d
     try {

@@ -1,5 +1,6 @@
 // Catálogo público de componentes: famílias em separadores, grupos e pesquisa.
-import { Suspense, lazy, useState } from 'react'
+import { Suspense, useState } from 'react'
+import { lazyReload } from '../functions/staleChunks.js'
 import { Tabs, Tab, Input, Card, CardBody, Chip } from '@heroui/react'
 import { Search } from 'lucide-react'
 import { PageHeader } from '../components/site/PageHeader.jsx'
@@ -7,8 +8,8 @@ import { FAMILIES, PART_COUNT, partName, partDesc } from '../functions/siteData.
 import { useT } from '../i18n/index.js'
 
 // miniaturas 3D (modelos pesados) carregadas à parte
-const ThumbHost = lazy(() => import('../components/site/PartThumbs.jsx').then((m) => ({ default: m.ThumbHost })))
-const PartThumb = lazy(() => import('../components/site/PartThumbs.jsx').then((m) => ({ default: m.PartThumb })))
+const ThumbHost = lazyReload(() => import('../components/site/PartThumbs.jsx').then((m) => ({ default: m.ThumbHost })))
+const PartThumb = lazyReload(() => import('../components/site/PartThumbs.jsx').then((m) => ({ default: m.PartThumb })))
 
 export default function Componentes() {
   const tr = useT()

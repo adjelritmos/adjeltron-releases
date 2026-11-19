@@ -16,7 +16,7 @@ export default {
   cat: 'robot',
   loose: true,
   description:
-    'Cabeça do cão robô em alumínio: aparafusa no braço do servo deitado do pescoço (acena para cima e para baixo) e tem um queixo para o sensor ultrassónico HC-SR04 — os "olhos", virados para a frente — e por cima dele o suporte da câmara (decorativa). Os fios do sensor descem pela espiral até ao chassi. O sensor mede na direção em que a cabeça está virada: rode o pescoço para "olhar" para os lados antes de decidir para onde virar.',
+    'Cabeça do cão robô em alumínio: aparafusa no braço do servo deitado do pescoço (acena para cima e para baixo) e tem um queixo para o sensor ultrassónico HC-SR04 — os "olhos", virados para a frente — e por cima dele o suporte da câmara. Os fios do sensor descem pela espiral até ao chassi. O sensor mede na direção em que a cabeça está virada: rode o pescoço para "olhar" para os lados antes de decidir para onde virar.',
   size: [4.4, 3.5, 5.2],
   pins: [],
   mech: true,

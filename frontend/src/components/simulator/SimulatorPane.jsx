@@ -12,6 +12,7 @@ import { WIRE_COLORS, wireColorLabel, DEFS, pinLabel, mountsOf } from '@shared/c
 import { CATALOG } from '@shared/catalog.js'
 import { simRef } from '../../contexts/simRef.js'
 import { PhysicsControls } from '../three/physics/PhysicsControls.jsx'
+import { CameraPanel, CameraToggle } from '../panels/CameraPanel.jsx'
 import { Download, FileImage, FileCode2, Boxes, Route } from 'lucide-react'
 import { exportCircuitPng, exportCircuitSvg, export3dPng, export3dGlb } from '../../functions/exportImage.js'
 import { Toast } from '../common/Toast.jsx'
@@ -326,10 +327,12 @@ export function SimulatorPane() {
             <TrackSelect />
             <FollowToggle />
             <WiresToggle />
+            <CameraToggle />
             <PhysicsControls />
           </div>
         </div>
         <PropertiesCard />
+        <CameraPanel />
         {mode === 'sim' && (
           <div className="absolute top-3 right-3 z-10 flex flex-col gap-2 items-end max-h-[calc(100%-24px)] overflow-auto">
             <Telemetry />

@@ -1,6 +1,6 @@
 // Utilitários dos componentes do grupo A (não é um componente):
 // geometria de dígitos de 7 segmentos (canvas + SVG) e texturas que seguem o estado vivo.
-import { useMemo, useRef, useFrame, THREE, liveOf } from '../kit.jsx'
+import { SCREEN_TINT, useMemo, useRef, useFrame, THREE, liveOf } from '../kit.jsx'
 
 export const SEG_KEYS = ['a', 'b', 'c', 'd', 'e', 'f', 'g']
 export const LED_HEX = { red: '#ff2a2a', green: '#22ee55', yellow: '#ffd22a', blue: '#2a7bff', white: '#f4f7ff' }
@@ -101,7 +101,7 @@ export function FacePlane({ tex, w, d, pos }) {
   return (
     <mesh position={pos} rotation={[-Math.PI / 2, 0, 0]}>
       <planeGeometry args={[w, d]} />
-      <meshBasicMaterial map={tex} toneMapped={false} />
+      <meshBasicMaterial map={tex} color={SCREEN_TINT} toneMapped={false} />
     </mesh>
   )
 }

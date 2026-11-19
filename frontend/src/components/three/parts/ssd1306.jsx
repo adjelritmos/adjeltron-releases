@@ -1,9 +1,10 @@
 // OLED SSD1306 128×64. A imagem (1 bit por ponto) chega em live.fb (base64) e só
 // muda quando o programa chama display(): live.ver é incrementado.
 import { useMemo } from 'react'
-import { Box, Pcb, HeaderPins, Cyl } from '../kit.jsx'
+import { Pcb, HeaderPins } from '../kit.jsx'
 import def from '@shared/parts/ssd1306.js'
-import { useLiveTexture, FacePlane, rectOf } from './_groupA.jsx'
+import { useLiveTexture, rectOf } from './_groupA.jsx'
+import { DisplayPanel, MountHoles, PinLabels } from './_gDisplays.jsx'
 
 // área ativa 21,7 × 10,9 mm
 const ACT = { x: [-1.087, 1.087], z: [-0.45, 0.636] }
@@ -39,6 +40,10 @@ export function paintOled(ctx, L, color, transparent = false) {
   ctx.putImageData(img, 0, 0)
 }
 
+// vidro do painel 0,96" (a saliência com o CI fica do lado da fita, em baixo) e furos M2
+const GLASS = { x: [-1.335, 1.335], z: [-0.62, 1.02] }
+const HOLES = [[-1.175, -1.19], [1.175, -1.19], [-1.175, 1.19], [1.175, 1.19]]
+
 function Model({ part }) {
   const color = part.config?.color || 'white'
   const tex = useLiveTexture(part.id, 128, 64, (ctx, w, h, L) => paintOled(ctx, L, color), {
@@ -47,14 +52,11 @@ function Model({ part }) {
   })
   return (
     <group>
-      <Pcb size={[2.73, 0.12, 2.78]} color="#1d3f8f" />
-      {/* vidro do ecrã e fita flexível */}
-      <Box size={[2.62, 0.14, 1.6]} pos={[0, 0.19, 0.1]} color="#0b0b0d" rough={0.25} />
-      <Box size={[1.0, 0.03, 0.25]} pos={[0, 0.14, 1.0]} color="#a8742a" />
-      <FacePlane tex={tex} w={ACT.x[1] - ACT.x[0]} d={ACT.z[1] - ACT.z[0]} pos={[0, 0.265, (ACT.z[0] + ACT.z[1]) / 2]} />
-      {[-1, 1].map((sx) => (
-        <Cyl key={sx} r={0.05} h={0.02} pos={[sx * 1.15, 0.13, -1.15]} color="#ddd" />
-      ))}
+      <Pcb size={[2.73, 0.12, 2.78]} color="#1d3f8f" holes={false} />
+      <MountHoles pts={HOLES} y={0.12} r={0.1} ring={0.17} />
+      {/* painel OLED (vidro duplo preto) colado com fita, fita flexível dobrada no bordo de baixo */}
+      <DisplayPanel glass={GLASS} act={ACT} y0={0.12} h={0.14} tex={tex} ledge={1} fpc={{ w: 1.2, edge: 1.39, y: 0.12 }} />
+      <PinLabels xs={def.pins.map((p) => p.pos[0])} names={def.pins.map((p) => p.id)} z={-0.86} y={0.122} />
       <HeaderPins pins={def.pins} base={0} up={0.45} />
     </group>
   )

@@ -1,46 +1,66 @@
-// Caixa preta para 4 pilhas AA em 2 camadas (2 × 2), aberta em cima: vêem-se as duas pilhas de
-// cima, as molas e os contactos nas pontas; fios vermelho e preto a sair de uma ponta.
-import { Box, Cyl } from '../kit.jsx'
+// Caixa preta para 4 pilhas AA em 2 camadas (2 × 2), aberta em cima, como a "4 AA battery case
+// with lead" de ABS: vêem-se as duas pilhas de cima (e as de baixo pelas janelas laterais), as
+// molas achatadas no polo −, as patilhas niqueladas no +, as pontes em série nos topos e os
+// fios vermelho e preto a sair de uma ponta.
+import { Box, RBox, Cyl, METAL } from '../kit.jsx'
 import def, { AAB } from '@shared/parts/aaBox4.js'
 import { LeadPair } from './battery9v.jsx'
+import { AACell, Spring, PlusTab, cellTone } from './aaPack.jsx'
 import { Badge, fmt } from './group-c-ui.jsx'
 
 const { L, W, H } = AAB
-const R = 0.7 // raio de uma AA
 const ZS = [-0.75, 0.75]
 const YS = [0.85, 2.3]
+const PLASTIC = '#151515'
 
-function Model() {
+function Model({ part }) {
+  const color = part?.config?.color || def.config.color
   const wall = 0.12
+  const end = 0.25
+  const inner = L / 2 - end
   return (
     <group>
-      {/* fundo, paredes laterais e topos (aberta em cima) */}
-      <Box size={[L, 0.15, W]} pos={[0, 0.075, 0]} color="#141414" rough={0.6} />
+      {/* fundo, paredes laterais (com janela para a camada de baixo) e topos (aberta em cima) */}
+      <RBox size={[L, 0.15, W]} r={0.05} pos={[0, 0.075, 0]} color={PLASTIC} rough={0.55} />
       {[-1, 1].map((s) => (
-        <Box key={`z${s}`} size={[L, H - 0.35, wall]} pos={[0, (H - 0.35) / 2, s * (W / 2 - wall / 2)]} color="#141414" rough={0.6} />
+        <group key={`z${s}`}>
+          <RBox size={[L, 0.5, wall]} r={0.04} pos={[0, 0.25, s * (W / 2 - wall / 2)]} color={PLASTIC} rough={0.55} />
+          <RBox size={[L, H - 0.35 - 1.3, wall]} r={0.04} pos={[0, 1.3 + (H - 0.35 - 1.3) / 2, s * (W / 2 - wall / 2)]} color={PLASTIC} rough={0.55} />
+          {[-1, 1].map((k) => (
+            <Box key={k} size={[0.7, 0.85, wall]} pos={[k * (L / 2 - 0.35), 0.9, s * (W / 2 - wall / 2)]} color={PLASTIC} rough={0.55} />
+          ))}
+        </group>
       ))}
       {[-1, 1].map((s) => (
-        <Box key={`x${s}`} size={[0.25, H, W]} pos={[s * (L / 2 - 0.125), H / 2, 0]} color="#141414" rough={0.6} />
+        <RBox key={`x${s}`} size={[end, H, W]} r={0.06} pos={[s * (L / 2 - end / 2), H / 2, 0]} color={PLASTIC} rough={0.55} />
       ))}
-      {/* divisória entre as duas camadas */}
-      <Box size={[L - 0.5, 0.08, W - 0.3]} pos={[0, 1.58, 0]} color="#1c1c1c" />
+      {/* divisória entre as duas camadas, com o berço curvo */}
+      <Box size={[L - 0.5, 0.08, W - 0.3]} pos={[0, 1.58, 0]} color="#1c1c1c" rough={0.6} />
+      <Box size={[L - 0.5, 0.2, 0.08]} pos={[0, 1.66, 0]} color="#1c1c1c" rough={0.6} />
       {YS.flatMap((y, row) =>
         ZS.map((z, col) => {
           const dir = (row + col) % 2 ? -1 : 1 // pilhas alternadas: ligadas em série
           return (
             <group key={`${row}${col}`}>
-              <Cyl r={R} h={4.9} pos={[0, y, z]} rot={[0, 0, Math.PI / 2]} color={row ? '#2e7d32' : '#1f5e24'} rough={0.35} />
-              <Cyl r={R + 0.01} h={1.2} pos={[dir * -1.85, y, z]} rot={[0, 0, Math.PI / 2]} color="#c9a227" metal={0.5} rough={0.35} />
-              <Cyl r={0.25} h={0.15} pos={[dir * 2.5, y, z]} rot={[0, 0, Math.PI / 2]} color="#d9dde2" metal={0.9} />
-              {/* mola no polo negativo */}
-              <Cyl r={0.42} h={0.3} pos={[-dir * 2.7, y, z]} rot={[0, 0, Math.PI / 2]} color="#b0b4ba" metal={0.9} rough={0.3} seg={10} />
+              <AACell pos={[-0.075 * dir, y, z]} dir={dir} color={cellTone(color, row ? 0 : 1)} />
+              <Spring pos={[-dir * inner, y, z]} dir={dir} len={0.13} />
+              <PlusTab wallX={dir * inner} y={y} z={z} dir={dir} tip={2.49} />
             </group>
           )
         }),
       )}
-      {/* contactos dourados na ponta dos fios */}
-      {[-0.6, 0.6].map((z) => (
-        <Cyl key={z} r={0.22} h={0.05} pos={[L / 2 + 0.01, 0.6, z]} rot={[0, 0, Math.PI / 2]} color="#c9a227" metal={0.8} rough={0.3} seg={14} />
+      {/* pontes em série por cima dos topos e polaridades em relevo */}
+      {[-1, 1].map((s) => (
+        <group key={`b${s}`}>
+          <Box size={[0.2, 0.03, 1.6]} pos={[s * (L / 2 - end / 2), H + 0.015, 0]} color={METAL.nickel} metal={1} rough={0.35} />
+          <Box size={[0.02, 0.06, 0.3]} pos={[s * (L / 2 + 0.001), H - 0.45, -0.75]} color="#2c2c2c" />
+          <Box size={[0.02, 0.06, 0.3]} pos={[s * (L / 2 + 0.001), H - 0.45, 0.75]} color="#2c2c2c" />
+          <Box size={[0.02, 0.3, 0.06]} pos={[s * (L / 2 + 0.001), H - 0.45, s * 0.75]} color="#2c2c2c" />
+        </group>
+      ))}
+      {/* saída dos fios: casquilho de alívio de tensão no topo +x */}
+      {[-0.25, 0.25].map((z) => (
+        <Cyl key={z} r={0.11} h={0.12} pos={[L / 2 + 0.05, 0.5, z]} rot={[0, 0, Math.PI / 2]} color="#0d0d0d" rough={0.5} seg={12} />
       ))}
       <LeadPair from={[L / 2, 0.5, 0]} pins={def.pins} />
     </group>

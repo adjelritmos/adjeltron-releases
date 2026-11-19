@@ -74,6 +74,7 @@ import { sendWorld, setInput } from '../../../services/simControl.js'
 import { planAssemblies, lowestPoint, jointInertia, UNITS, buildMatrices } from './assembly.js'
 import { createTraction } from './traction.js'
 import { createGrippers } from './grippers.js'
+import { createBeltSurfaces } from './beltSurface.js'
 import { mountAngleNow } from '../../../functions/mechLive.js'
 
 export const STEP = 1 / 240
@@ -92,7 +93,7 @@ const r4 = (v) => Math.round(v * 1e4) / 1e4
 
 // assinatura da geometria (muda → mundo da física recriado). Não inclui valores de
 // potenciómetros/sliders, que mudam durante a simulação.
-const physicsSignature = (parts) => JSON.stringify(parts.map((p) => [p.id, p.type, p.parent?.id, p.parent?.mount, p.pos, p.rot, p.config?.length, p.physics, p.config?.material, p.config?.scale, p.config?.x, p.config?.y, p.config?.z, p.config?.r, p.config?.h, p.config?.width, p.config?.height, p.config?.thick, p.config?.l, p.config?.w, p.config?.t]))
+const physicsSignature = (parts) => JSON.stringify(parts.map((p) => [p.id, p.type, p.parent?.id, p.parent?.mount, p.pos, p.rot, p.config?.length, p.physics, p.config?.material, p.config?.scale, p.config?.x, p.config?.y, p.config?.z, p.config?.r, p.config?.h, p.config?.width, p.config?.height, p.config?.thick, p.config?.l, p.config?.w, p.config?.t, p.config?.pulleys, p.config?.offset]))
 
 // ---------- camada (só no modo simulação) ----------
 export function PhysicsLayer() {
@@ -348,7 +349,10 @@ function createSystem(world, R, parts) {
   }
   // filtro de pares de contacto (useFilterContactPair): COMPUTE_IMPULSE = contacto normal;
   // EMPTY = calcula o contacto mas não empurra (null, no Rapier, ignoraria o par por completo)
+  let belts = null // correias com corpo (beltSurface.js), criadas mais abaixo
   const filterPair = (b1, b2) => {
+    // correia ↔ montagens das suas polias: não chocam (a correia passa sobre os apoios)
+    if (belts?.skipPair(b1, b2)) return R.SolverFlags.EMPTY
     const A = bodyInfo.get(b1)
     const B = bodyInfo.get(b2)
     if (!A || !B || A.run !== B.run) return R.SolverFlags.COMPUTE_IMPULSE
@@ -403,6 +407,8 @@ function createSystem(world, R, parts) {
   const servoDeg = (id) => mountAngleNow(id)
   // rodas omni/mecanum e lagartas (traction.js)
   const traction = createTraction(runs)
+  // correias/tapetes com corpo: arrastam o que está pousado (beltSurface.js)
+  belts = createBeltSurfaces({ world, R, parts, runs, colInfo, group: (G_KIN << 16) | 0xffff, stepDt: STEP })
   // ---------- vento de todas as hélices a rodar (ventoinhas, drones, hélices em motores) ----------
   // Uma hélice que gira empurra ar: o jato sai no sentido contrário ao impulso (def.thrust) ou,
   // nas ventoinhas (def.fan), segundo o +y da hélice (× live.jetDir). 7 raios paralelos ao eixo
@@ -759,6 +765,7 @@ function createSystem(world, R, parts) {
     ignorePairs,
     deepChain,
     runs,
+    belts, // (depuração: __simRef.physicsSystem.belts)
     grab: grabApi,
     // frame (antes dos passos): cubos agarrados ↔ soltos e alvos dos corpos cinemáticos
     prepareFrame(dt) {
@@ -778,6 +785,7 @@ function createSystem(world, R, parts) {
         }
       walkFrame(dt, n)
       liveFrame()
+      belts?.frame(dt, n, useStore.getState().paused)
       grip.frame(n)
       for (const run of runs) {
         if (run.isCube) {
@@ -823,6 +831,7 @@ function createSystem(world, R, parts) {
       grabStep()
       walkSubstep()
       traction?.apply(STEP)
+      belts?.step()
       blowAir()
       for (const run of runs) {
         if (run.kin || run.anch) {
@@ -1009,6 +1018,7 @@ function createSystem(world, R, parts) {
       for (const run of runs) for (const b of run.bodies) sets.bodies.remove(b.handle, sets.islands, sets.colliders, sets.ij, sets.mj)
       for (const w of walkers.values()) sets.bodies.remove(w.body.handle, sets.islands, sets.colliders, sets.ij, sets.mj)
       for (const L of liveParts) sets.bodies.remove(L.body.handle, sets.islands, sets.colliders, sets.ij, sets.mj)
+      belts?.dispose(sets)
       if (cc) world.removeCharacterController(cc)
     },
   }

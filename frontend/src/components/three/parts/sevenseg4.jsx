@@ -1,5 +1,6 @@
 // Display de 7 segmentos × 4 dígitos (multiplexado). Segmentos numa textura de canvas.
 import { Box, Leg } from '../kit.jsx'
+import { SideText } from './_gDisplays.jsx'
 import def from '@shared/parts/sevenseg4.js'
 import { LED_HEX, drawDigit, SvgDigit, useLiveTexture, FacePlane, rectOf } from './_groupA.jsx'
 
@@ -19,16 +20,20 @@ function draw(color) {
   }
 }
 
+// 5461AS (50,4 × 19 × 8 mm): caixa branca, face preta com os 4 dígitos e 12 pernas
 function Model({ part }) {
   const color = LED_HEX[part.config?.color] || LED_HEX.red
   const tex = useLiveTexture(part.id, 980, 360, draw(color))
+  const anode = part.config?.common === 'anode'
   return (
     <group>
       {def.pins.map((p) => (
         <Leg key={p.id} from={p.pos} to={[p.pos[0], BODY.y0 + 0.1, p.pos[2]]} r={0.025} />
       ))}
-      <Box size={[BODY.w, BODY.h, BODY.d]} pos={[0, BODY.y0 + BODY.h / 2, BODY.cz]} color="#1b1b1b" rough={0.8} />
-      <FacePlane tex={tex} w={FACE.x[1] - FACE.x[0]} d={FACE.z[1] - FACE.z[0]} pos={[0, TOP + 0.002, BODY.cz]} />
+      <Box size={[BODY.w, BODY.h, BODY.d]} pos={[0, BODY.y0 + BODY.h / 2, BODY.cz]} color="#ebe9e4" rough={0.55} />
+      <Box size={[BODY.w - 0.02, 0.004, BODY.d - 0.02]} pos={[0, TOP + 0.001, BODY.cz]} color="#111111" rough={0.75} />
+      <FacePlane tex={tex} w={FACE.x[1] - FACE.x[0]} d={FACE.z[1] - FACE.z[0]} pos={[0, TOP + 0.004, BODY.cz]} />
+      <SideText text={anode ? '5461BS' : '5461AS'} pos={[-1.6, 0.48, BODY.cz + BODY.d / 2 + 0.001]} w={0.8} color="#666" />
     </group>
   )
 }

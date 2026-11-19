@@ -197,10 +197,17 @@ export function createSession(send) {
         case 'input': {
           // botões e potenciómetros mexidos no browser
           if (msg.release) {
-            for (const [id, v] of Object.entries(inputs)) if (v.pressed || v.key) inputs[id] = { ...v, pressed: false, key: null }
+            for (const [id, v] of Object.entries(inputs)) if (v.pressed || v.key || v.reset || v.boot || v.off) inputs[id] = { ...v, pressed: false, key: null, reset: false, boot: false, off: false }
           } else if (msg.data) inputs[msg.id] = { ...(inputs[msg.id] || {}), ...msg.data }
           else inputs[msg.id] = msg.value != null ? { value: +msg.value } : { pressed: !!msg.pressed }
           engine?.invalidate()
+          return
+        }
+        case 'camFrame': {
+          // imagem do módulo de câmara renderizada no browser (CameraFeeds.jsx): { id, w, h, rgb }
+          // → env.input(id).frame, lida por esp_camera_fb_get() (libs/esp_camera.js). Não
+          // invalida o circuito: a imagem não muda nada na parte elétrica.
+          if (msg.id && msg.rgb && msg.w > 0 && msg.h > 0 && msg.rgb.length >= msg.w * msg.h * 3) inputs[msg.id] = { ...(inputs[msg.id] || {}), frame: { w: msg.w, h: msg.h, rgb: msg.rgb } }
           return
         }
         case 'world':
