@@ -1,8 +1,10 @@
-// Arduino Mega 2560: placa azul-petróleo de 101,6 × 53,3 mm, USB-B e jack à esquerda,
-// ATmega2560 (TQFP-100) ao centro e conectores fêmea pretos nas posições exatas dos
+// Arduino Mega 2560: placa azul-petróleo de 101,6 × 53,3 mm com os 6 furos de 3,2 mm nas posições
+// reais, USB-B e jack à esquerda, ATmega16U2 (ponte USB), regulador NCP1117 (SOT-223) com os
+// dois eletrolíticos de 47 µF, polifusível, ATmega2560 (TQFP-100) rodado 45° ao centro com o
+// cristal de 16 MHz, ICSP 2×3 e conectores fêmea pretos (com os furos) nas posições exatas dos
 // pinos do catálogo (incluindo o conector duplo 2×18 na ponta direita).
-import { Box, Cyl, GlowLed, Standoff, useCanvasTexture, eng, PITCH, geo, pcbMat, METAL, UsbB, BarrelJack, Chip, Crystal, TactSwitch } from '../kit.jsx'
-import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
+import { GlowLed, Standoff, useCanvasTexture, eng, PITCH, UsbB, BarrelJack, Chip, Crystal, TactSwitch, ECap, FemaleHeader } from '../kit.jsx'
+import { PcbPlate, Smds, Sot223, PinBlocks, PinField } from './_boardKit.jsx'
 
 import def from '@shared/parts/mega.js'
 import { Glow2D } from './group-c-ui.jsx'
@@ -17,6 +19,17 @@ const LED_ON = [-2.9, TOP + 0.04, -1.2]
 const LED_L = [-2.25, TOP + 0.04, -1.75]
 const PX = 120 // px por cm na serigrafia
 const pinOf = Object.fromEntries(def.pins.map((p) => [p.id, p]))
+// furos de montagem (mm desde o canto de baixo à esquerda, como no desenho da Arduino)
+const HOLES = [[13.97, 2.54], [15.24, 50.8], [66.04, 7.62], [66.04, 35.56], [90.17, 50.8], [96.52, 2.54]].map(([x, y]) => [x / 10 - W / 2, D / 2 - y / 10])
+// ICSP do ATmega2560 (2 × 3) junto à ponta direita
+const ICSP = [0, 1, 2].flatMap((i) => [-0.127, 0.127].map((dx) => [3.75 + dx, 0.6 + (i - 1) * PITCH]))
+// passivos, LEDs TX/RX (apagados), polifusível e díodo de proteção
+const SMDS = [
+  [-2.25, -1.45, 0, 'l'], [-2.25, -1.2, 0, 'l'], [-1.95, -1.75, 0, 'r'], [-1.95, -1.45, 0, 'r'], [-1.95, -1.2, 0, 'r'],
+  [-3.9, -0.45, 1, 'f'], [-3.95, -0.05, 1, 'd'], [-2.75, -0.35, 0, 'c'], [-2.75, -0.6, 0, 'c'], [-0.75, 0.75, 1, 'c'],
+  [-0.55, 0.75, 1, 'c'], [-0.95, -0.35, 1, 'r'], [-0.95, -0.7, 1, 'r'], [1.6, 0.6, 1, 'c'], [1.25, -1.5, 0, 'C'],
+  [-1.2, 1.3, 0, 'c'], [-2.05, 1.3, 0, 'c'], [2.4, -0.2, 1, 'R'], [2.65, -0.2, 1, 'R'], [-2.6, 0.4, 0, 'C'],
+]
 
 const pin13 = () => {
   const e = eng()
@@ -80,38 +93,38 @@ function Model() {
   const dbl = [pinOf['5V.2'].pos, pinOf['GND.5'].pos]
   return (
     <group>
-      {[[-4.6, -2.2], [4.6, -2.2], [-4.6, 2.2], [4.0, 2.2]].map(([x, z], i) => (
+      {HOLES.map(([x, z], i) => (
         <Standoff key={i} x={x} z={z} h={1.0} />
       ))}
-      <mesh position={[0, PCB_Y, 0]} castShadow receiveShadow geometry={geo('megaPcb', () => new RoundedBoxGeometry(W, 0.16, D, 2, 0.04))} material={pcbMat('#04858f')} />
+      <PcbPlate id="mega" w={W} d={D} t={0.16} y={PCB_Y - 0.08} r={0.08} holes={HOLES.map(([x, z]) => [x, z, 0.16])} color="#04858f" ringColor="#d6d9dc" />
       <mesh position={[0, TOP + 0.002, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[W, D]} />
         <meshBasicMaterial map={silk} transparent />
       </mesh>
-      {/* USB-B, jack de alimentação, regulador, ATmega16U2 */}
+      {/* USB-B, jack de alimentação, regulador NCP1117, eletrolíticos de 47 µF e ATmega16U2 */}
       <UsbB pos={[-W / 2 + 0.38, 1.71 - 0.55, -1.3]} />
       <BarrelJack pos={[-W / 2 + 0.43, 1.71 - 0.55, 1.65]} />
-      <Box size={[0.6, 0.3, 0.8]} pos={[-3.85, 1.31, 0.6]} color="#222" />
+      <Sot223 pos={[-4.3, TOP, 0.55]} label="NCP1117" sub="ST50" />
+      <ECap pos={[-3.5, TOP, 0.75]} r={0.3} h={0.55} color="#1b1b1b" stripe="#cfd3d8" />
+      <ECap pos={[-3.5, TOP, 0.05]} r={0.3} h={0.55} color="#1b1b1b" stripe="#cfd3d8" />
       <Chip pos={[-3.3, TOP, -1.2]} size={[0.5, 0.08, 0.5]} pkg="qfn" n={8} rotY={Math.PI / 4} label="16U2" />
-      {/* cristal e botão de reset */}
+      <Smds id="mega" y={TOP} items={SMDS} />
+      {/* cristal de 16 MHz e botão de reset */}
       <Crystal pos={[-1.6, TOP, 1.05]} l={0.7} h={0.3} d={0.3} />
       <TactSwitch pos={[-4.0, 1.29 - 0.125, -2.0]} size={0.5} cap="#b71c1c" />
       {/* ATmega2560 (TQFP-100, rodado 45°) com as patilhas */}
       <Chip pos={[0.5, TOP, -0.35]} size={[1.3, 0.12, 1.3]} pkg="qfp" n={25} rotY={Math.PI / 4} label="ATMEGA2560" />
       {/* ICSP 2×3 junto à ponta direita */}
-      {[0, 1, 2].map((i) =>
-        [-0.127, 0.127].map((dz) => <Box key={`${i}${dz}`} size={[0.06, 0.6, 0.06]} pos={[3.75 + dz, TOP + 0.3, 0.6 + (i - 1) * PITCH]} color={METAL.gold} metal={1} rough={0.25} />),
-      )}
-      {/* conectores fêmea */}
+      <PinBlocks id="mega-icsp" pts={ICSP} y={TOP} />
+      <PinField id="mega-icsp" pts={ICSP.map(([x, z]) => [x, TOP + 0.85, z])} y0={TOP - 0.05} />
+      {/* conectores fêmea (com os furos) */}
       {GROUPS.map((g) => {
         const h = headerBox(g)
-        return <Box key={g[0]} size={h.size} pos={h.pos} color="#111" />
+        return <FemaleHeader key={g[0]} n={Math.round(h.size[0] / PITCH)} x={h.pos[0]} z={h.pos[2]} top={HDR_Y + HDR_H / 2} h={HDR_H} />
       })}
-      <Box size={[2 * PITCH, HDR_H, Math.abs(dbl[1][2] - dbl[0][2]) + PITCH]} pos={[(dbl[0][0] + dbl[1][0]) / 2, HDR_Y, (dbl[0][2] + dbl[1][2]) / 2]} color="#111" />
-      {/* furos dos conectores */}
-      {def.pins.map((p) => (
-        <Box key={p.id} size={[0.1, 0.01, 0.1]} pos={[p.pos[0], HDR_Y + HDR_H / 2 + 0.006, p.pos[2]]} color="#000" />
-      ))}
+      <group position={[(dbl[0][0] + dbl[1][0]) / 2, 0, (dbl[0][2] + dbl[1][2]) / 2]} rotation={[0, Math.PI / 2, 0]}>
+        <FemaleHeader n={Math.round(Math.abs(dbl[1][2] - dbl[0][2]) / PITCH) + 1} rows={2} x={0} z={0} top={HDR_Y + HDR_H / 2} h={HDR_H} />
+      </group>
       <GlowLed pos={LED_ON} color="#33ff66" read={() => (eng()?.arduinoRunning() ? 1 : 0)} />
       <GlowLed pos={LED_L} color="#ffaa00" read={pin13} />
     </group>

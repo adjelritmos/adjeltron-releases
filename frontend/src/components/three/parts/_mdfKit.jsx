@@ -8,13 +8,110 @@ export const MDF_BURN = '#4a2c16'
 export const BRASS = '#c9a227'
 export const NYLON = '#151515'
 
+// ---------- texturas da chapa (feitas uma vez) ----------
+// MDF: fibras prensadas, um salpicado fino e quase uniforme (sem veio); contraplacado/madeira:
+// veio comprido e ondulado. Em tons de cinzento claro: multiplicam a cor do material.
+// As UV das ExtrudeGeometry estão em cm: `repeat` dá o tamanho real do ladrilho.
+const WOOD_TEX = {}
+function woodTexture(kind) {
+  if (WOOD_TEX[kind] || typeof document === 'undefined') return WOOD_TEX[kind]
+  const N = 256
+  const c = document.createElement('canvas')
+  c.width = c.height = N
+  const x = c.getContext('2d')
+  let s = kind === 'mdf' ? 98765 : 4321
+  const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647)
+  x.fillStyle = 'rgb(236,236,236)'
+  x.fillRect(0, 0, N, N)
+  if (kind === 'mdf') {
+    // fibras curtas em todas as direções e pontos mais escuros (cola/resina)
+    for (let i = 0; i < 2600; i++) {
+      const v = 200 + Math.floor(rnd() * 55)
+      x.strokeStyle = `rgba(${v},${v},${v},0.55)`
+      x.lineWidth = 0.6 + rnd() * 0.8
+      const px = rnd() * N
+      const py = rnd() * N
+      const a = rnd() * Math.PI
+      const l = 1.5 + rnd() * 4
+      x.beginPath()
+      x.moveTo(px, py)
+      x.lineTo(px + Math.cos(a) * l, py + Math.sin(a) * l)
+      x.stroke()
+    }
+    for (let i = 0; i < 420; i++) {
+      const v = 165 + Math.floor(rnd() * 40)
+      x.fillStyle = `rgba(${v},${v - 6},${v - 14},0.5)`
+      x.fillRect(rnd() * N, rnd() * N, 1 + rnd() * 1.5, 1 + rnd() * 1.5)
+    }
+  } else {
+    // veio: linhas onduladas ao longo de x com anéis mais escuros
+    for (let i = 0; i < 70; i++) {
+      const y0 = rnd() * N
+      const v = 170 + Math.floor(rnd() * 70)
+      x.strokeStyle = `rgba(${v},${v - 8},${v - 20},${0.25 + rnd() * 0.45})`
+      x.lineWidth = 0.8 + rnd() * 2.6
+      const ph = rnd() * 6.28
+      const amp = 1 + rnd() * 3
+      x.beginPath()
+      for (let px = 0; px <= N; px += 8) {
+        const py = y0 + Math.sin(px / 40 + ph) * amp
+        if (px === 0) x.moveTo(px, py)
+        else x.lineTo(px, py)
+      }
+      x.stroke()
+    }
+  }
+  const t = new THREE.CanvasTexture(c)
+  t.wrapS = t.wrapT = THREE.RepeatWrapping
+  t.repeat.set(kind === 'mdf' ? 0.35 : 0.12, kind === 'mdf' ? 0.35 : 0.12)
+  t.colorSpace = THREE.SRGBColorSpace
+  t.anisotropy = 4
+  return (WOOD_TEX[kind] = t)
+}
+// aresta queimada pelo laser: castanho escuro a quase preto ao meio da espessura (textura em
+// faixas segundo v, que nas paredes da extrusão segue a profundidade)
+let BURN_TEX
+function burnTexture() {
+  if (BURN_TEX || typeof document === 'undefined') return BURN_TEX
+  const c = document.createElement('canvas')
+  c.width = 8
+  c.height = 64
+  const x = c.getContext('2d')
+  const g = x.createLinearGradient(0, 0, 0, 64)
+  g.addColorStop(0, '#7a5232')
+  g.addColorStop(0.5, '#2e1a0c')
+  g.addColorStop(1, '#6b4529')
+  x.fillStyle = g
+  x.fillRect(0, 0, 8, 64)
+  BURN_TEX = new THREE.CanvasTexture(c)
+  BURN_TEX.colorSpace = THREE.SRGBColorSpace
+  // v das paredes = profundidade da extrusão em cm: um gradiente por cada 3 mm (chapa típica)
+  BURN_TEX.wrapS = BURN_TEX.wrapT = THREE.RepeatWrapping
+  BURN_TEX.repeat.set(1, 1 / 0.3)
+  return BURN_TEX
+}
+const WOOD_MAT = new Map()
+function woodFaceMat(color, rough, kind) {
+  const k = `${color}|${rough}|${kind}`
+  let m = WOOD_MAT.get(k)
+  if (!m) {
+    const t = woodTexture(kind)
+    WOOD_MAT.set(k, (m = new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0, map: t, bumpMap: t, bumpScale: 0.004, envMapIntensity: 0.6 })))
+  }
+  return m
+}
+let BURN_MAT
+const burnMat = () => BURN_MAT || (BURN_MAT = new THREE.MeshStandardMaterial({ color: '#ffffff', map: burnTexture(), roughness: 0.95, metalness: 0, envMapIntensity: 0.4 }))
+
 // [face, aresta]: as ExtrudeGeometry têm o grupo 0 nas faces e o 1 nas paredes laterais
 export function mdfMats(cfg) {
   const key = cfg?.material || 'mdf'
   const m = matOf(cfg, 'mdf')
-  const face = mat(matColor(cfg, 'mdf'), m.metal, m.rough, m.opacity ? { transparent: true, opacity: m.opacity, depthWrite: false } : undefined)
   const wood = key === 'mdf' || key === 'madeira'
-  const edge = wood ? mat(MDF_BURN, 0, 0.95) : face
+  const face = wood
+    ? woodFaceMat(matColor(cfg, 'mdf'), m.rough, key)
+    : mat(matColor(cfg, 'mdf'), m.metal, m.rough, m.opacity ? { transparent: true, opacity: m.opacity, depthWrite: false } : undefined)
+  const edge = wood ? burnMat() : face
   return [face, edge]
 }
 
@@ -74,17 +171,41 @@ export function Mdf({ geometry, cfg, pos, rot }) {
 // parafuso M3 de latão: cabeça em `pos` (face da chapa), corpo ao longo de −eixo e porca no fim
 // (axis: 'y' | 'z' | '-z' | '-y'); len = espessura total apertada
 const AX = { y: [0, 0, 0], '-y': [Math.PI, 0, 0], z: [Math.PI / 2, 0, 0], '-z': [-Math.PI / 2, 0, 0] }
+// cabeça de lentilha (perfil de revolução: assento plano, aba e cúpula baixa), como os M3 DIN 7985
+const panHeadGeo = () =>
+  geo('mdfScrewPan', () => {
+    const pts = [[0, 0], [0.27, 0], [0.275, 0.03], [0.26, 0.08], [0.21, 0.13], [0.12, 0.16], [0, 0.17]].map(([r, y]) => new THREE.Vector2(r, y))
+    return new THREE.LatheGeometry(pts, 18)
+  })
+// fenda em cruz (Phillips) rebaixada no topo da cabeça
+const crossGeo = () =>
+  geo('mdfScrewCross', () => {
+    const a = new THREE.BoxGeometry(0.26, 0.05, 0.05).translate(0, 0.155, 0)
+    const b = new THREE.BoxGeometry(0.05, 0.05, 0.26).translate(0, 0.155, 0)
+    const g = new THREE.BufferGeometry()
+    const pa = a.toNonIndexed().attributes.position.array
+    const pb = b.toNonIndexed().attributes.position.array
+    const p = new Float32Array(pa.length + pb.length)
+    p.set(pa)
+    p.set(pb, pa.length)
+    g.setAttribute('position', new THREE.BufferAttribute(p, 3))
+    g.computeVertexNormals()
+    return g
+  })
+// porca sextavada M3 (5,5 mm entre faces) com o chanfro das arestas
+const nutGeo = () =>
+  geo('mdfNutL', () => {
+    const pts = [[0.14, 0], [0.29, 0], [0.32, 0.03], [0.32, 0.21], [0.29, 0.24], [0.14, 0.24]].map(([r, y]) => new THREE.Vector2(r, y))
+    return new THREE.LatheGeometry(pts, 6).translate(0, -0.24, 0)
+  })
 export function Screw({ pos, axis = 'y', len = 0.6, nut = true }) {
-  const head = geo('mdfScrewHead', () => new THREE.CylinderGeometry(0.27, 0.27, 0.12, 16).translate(0, 0.06, 0))
-  const slot = geo('mdfScrewSlot', () => new THREE.BoxGeometry(0.4, 0.04, 0.06).translate(0, 0.12, 0))
   const shaft = geo(`mdfScrewShaft${len}`, () => new THREE.CylinderGeometry(0.14, 0.14, len + 0.15, 8).translate(0, -(len + 0.15) / 2, 0))
-  const nutG = geo('mdfNut', () => new THREE.CylinderGeometry(0.3, 0.3, 0.2, 6).translate(0, -0.1, 0))
   return (
     <group position={pos} rotation={AX[axis]}>
-      <mesh geometry={head} material={mat(BRASS, 0.85, 0.32)} castShadow />
-      <mesh geometry={slot} material={mat('#6b5414', 0.6, 0.5)} />
+      <mesh geometry={panHeadGeo()} material={mat(BRASS, 0.85, 0.32)} castShadow />
+      <mesh geometry={crossGeo()} material={mat('#5e4a12', 0.6, 0.6)} />
       <mesh geometry={shaft} material={mat(BRASS, 0.85, 0.35)} />
-      {nut && <mesh geometry={nutG} position={[0, -len, 0]} material={mat(BRASS, 0.85, 0.32)} castShadow />}
+      {nut && <mesh geometry={nutGeo()} position={[0, -len, 0]} material={mat(BRASS, 0.85, 0.32)} castShadow />}
     </group>
   )
 }
@@ -117,8 +238,9 @@ export function Sg90Body({ color = '#2a62d8' }) {
   // etiqueta lateral (como a do SG90 da Tower Pro)
   const tex = useLabel(
     [
-      { text: 'SG90', font: 'bold 74px Arial', y: 58 },
-      { text: 'MICRO SERVO · 9g', font: 'bold 26px Arial', y: 108 },
+      { text: 'TowerPro', font: 'italic bold 26px Arial', y: 20 },
+      { text: 'SG90', font: 'bold 70px Arial', y: 66 },
+      { text: 'MICRO SERVO · 9g', font: 'bold 24px Arial', y: 112 },
     ],
     512,
     128,

@@ -1,5 +1,7 @@
-// Breadboard completa de 830 pontos: 63 colunas, canal central e 4 trilhos (+ vermelho, − azul).
+// Breadboard completa de 830 pontos (165 × 55 × 8,5 mm): 63 colunas, canal central a sério e 4 trilhos
+// (+ vermelho, − azul).
 import { Box, RBox, PITCH, useCanvasTexture } from '../kit.jsx'
+import { texStripGeo } from './_boardKit.jsx'
 import def, { BBF, bbfColX, BBF_RAIL_Z } from '@shared/parts/breadboardFull.js'
 
 const [W, H, D] = def.size
@@ -63,19 +65,32 @@ function draw(ctx, w, h) {
   }
 }
 
+// corpo em ABS: base e as duas metades do topo separadas pelo canal central (com 3 mm de fundo,
+// como na peça real), encaixes em rabo de andorinha (macho em −z, fêmea em +z) e o topo com os
+// furos e a serigrafia numa textura partilhada pelas duas metades.
+const CH = 0.17 // meia largura do canal central
+const DEPTH = 0.3
 function Model() {
   const tex = useCanvasTexture(draw, ['bbf-3'], 3072, Math.round((3072 * D) / W))
+  const halves = [[-D / 2, -CH], [CH, D / 2]]
   return (
     <group>
-      <RBox size={[W, H - 0.01, D]} r={0.06} pos={[0, (H - 0.01) / 2, 0]} color="#ece9df" rough={0.65} />
-      {/* encaixes laterais (rabo de andorinha) */}
-      {[-6, -3, 0, 3, 6].map((x) => (
-        <Box key={x} size={[0.35, 0.5, 0.12]} pos={[x, 0.35, -D / 2 - 0.04]} color="#e3e0d5" />
+      <RBox size={[W, H - DEPTH, D]} r={0.06} pos={[0, (H - DEPTH) / 2, 0]} color="#ece9df" rough={0.65} />
+      {halves.map(([z0, z1]) => (
+        <group key={z0}>
+          <RBox size={[W, DEPTH + 0.05, z1 - z0]} r={0.04} pos={[0, H - 0.01 - (DEPTH + 0.05) / 2, (z0 + z1) / 2]} color="#ece9df" rough={0.65} />
+          <mesh position={[0, H - 0.008, 0]} receiveShadow geometry={texStripGeo(`bbf${z0}`, W, D, z0, z1)}>
+            <meshStandardMaterial map={tex} roughness={0.62} />
+          </mesh>
+        </group>
       ))}
-      <mesh position={[0, H + 0.001, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[W, D]} />
-        <meshStandardMaterial map={tex} roughness={0.62} />
-      </mesh>
+      {/* encaixes laterais: lingueta em rabo de andorinha (−z) e ranhura escura (+z) */}
+      {[-6, -3, 0, 3, 6].map((x) => (
+        <group key={x}>
+          <Box size={[0.35, 0.5, 0.12]} pos={[x, 0.35, -D / 2 - 0.04]} color="#e3e0d5" />
+          <Box size={[0.37, 0.52, 0.02]} pos={[x, 0.35, D / 2 + 0.002]} color="#bdb9ad" rough={0.8} />
+        </group>
+      ))}
     </group>
   )
 }

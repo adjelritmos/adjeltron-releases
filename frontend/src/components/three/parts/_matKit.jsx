@@ -1,6 +1,6 @@
 // Ajudantes dos modelos com material (grupo Materiais): material three.js a partir de
 // config.material/config.color e perfis extrudidos (pontas redondas, cantos arredondados) com furos.
-import { geo, mat, THREE } from '../kit.jsx'
+import { geo, mat, mergedGeo, THREE } from '../kit.jsx'
 import { matOf, matColor } from '@shared/parts/_materials.js'
 
 // material three.js da peça (cor do utilizador ou do material; acrílico transparente)
@@ -57,4 +57,81 @@ export function roundRectGeo(L, W, T, rc, holes = [], hr = 0.2) {
     for (const [x, z] of holes) circle(s, x, -z, hr)
     return extrudeXZ(s, T)
   })
+}
+
+// ---------- ajudantes dos chassis e corpos de robôs ----------
+// chapa de perfil (x, y) com chanfro nas arestas, deitada: (x, y) → (x, −z), espessura de y = 0
+// a y = T (grupo 0 = faces, grupo 1 = paredes laterais, como nas ExtrudeGeometry)
+export function bevelPlateXZ(key, T, build, bevel = 0.03, seg = 12) {
+  return geo(`bplxz:${key}:${T}:${bevel}`, () => {
+    const b = Math.min(bevel, T / 3)
+    const g = new THREE.ExtrudeGeometry(build(), { depth: T - 2 * b, bevelEnabled: b > 0, bevelThickness: b, bevelSize: b, bevelOffset: -b, bevelSegments: 1, curveSegments: seg })
+    g.translate(0, 0, b)
+    g.rotateX(-Math.PI / 2)
+    g.computeVertexNormals()
+    return g
+  })
+}
+
+// fibra de carbono 3K em sarja 2×2 (as madeixas a 45° que se veem nos quadros de drone), com
+// verniz brilhante por cima; as arestas cortadas mostram as camadas (cinzento mate)
+let CARBON_TEX
+function carbonTexture() {
+  if (CARBON_TEX || typeof document === 'undefined') return CARBON_TEX
+  const N = 256
+  const n = 16 // madeixas por ladrilho
+  const p = N / n
+  const c = document.createElement('canvas')
+  c.width = c.height = N
+  const x = c.getContext('2d')
+  for (let i = 0; i < n; i++)
+    for (let j = 0; j < n; j++) {
+      // sarja 2×2: a madeixa de cima alterna em degraus diagonais
+      const warp = ((i + j) >> 1) % 2 === 0
+      const g = warp ? x.createLinearGradient(i * p, 0, (i + 1) * p, 0) : x.createLinearGradient(0, j * p, 0, (j + 1) * p)
+      g.addColorStop(0, '#2a2a2c')
+      g.addColorStop(0.5, warp ? '#5a5c60' : '#46484c')
+      g.addColorStop(1, '#2a2a2c')
+      x.fillStyle = g
+      x.fillRect(i * p, j * p, p, p)
+    }
+  CARBON_TEX = new THREE.CanvasTexture(c)
+  CARBON_TEX.wrapS = CARBON_TEX.wrapT = THREE.RepeatWrapping
+  // madeixas de ~2 mm (UV das extrusões em cm)
+  CARBON_TEX.repeat.set(1.5, 1.5)
+  CARBON_TEX.rotation = Math.PI / 4
+  CARBON_TEX.colorSpace = THREE.SRGBColorSpace
+  CARBON_TEX.anisotropy = 8
+  return CARBON_TEX
+}
+let CARBON_M
+export function carbonMats() {
+  if (!CARBON_M) {
+    const face = new THREE.MeshPhysicalMaterial({ color: '#9a9ca0', map: carbonTexture(), metalness: 0.2, roughness: 0.4, clearcoat: 0.8, clearcoatRoughness: 0.15, envMapIntensity: 0.9 })
+    CARBON_M = [face, mat('#2b2b2d', 0.1, 0.75)]
+  }
+  return CARBON_M
+}
+
+// cabeças de parafuso M3 de cabeça boleada (ISO 7380) com sextavado interior, todas numa malha
+// (cabeça a sair para +y a partir de cada ponto); `r` = raio da cabeça
+export function ScrewHeads({ pts, r = 0.28, color = '#1e1f22', metal = 0.6, rough = 0.4, rot }) {
+  const key = `${r}|${pts.map((p) => p.map((v) => +v.toFixed(3)).join(',')).join(';')}`
+  const head = mergedGeo(`shd${key}`, () => {
+    const g = geo(`btnHead${r}`, () => {
+      const pts2 = [[0, 0], [r, 0], [r, r * 0.12], [r * 0.85, r * 0.42], [r * 0.5, r * 0.6], [r * 0.42, r * 0.6], [r * 0.42, r * 0.4], [0, r * 0.4]].map(([a, b]) => new THREE.Vector2(a, b))
+      return new THREE.LatheGeometry(pts2, 16)
+    })
+    return pts.map((p) => [g, p])
+  })
+  const hex = mergedGeo(`shx${key}`, () => {
+    const g = geo(`btnHex${r}`, () => new THREE.CylinderGeometry(r * 0.36, r * 0.36, 0.01, 6).translate(0, r * 0.41, 0))
+    return pts.map((p) => [g, p])
+  })
+  return (
+    <group rotation={rot}>
+      <mesh geometry={head} material={mat(color, metal, rough)} castShadow />
+      <mesh geometry={hex} material={mat('#050505', 0, 0.9)} />
+    </group>
+  )
 }

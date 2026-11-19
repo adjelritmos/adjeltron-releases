@@ -1,5 +1,5 @@
 // Interruptor DIP de 8 vias (DIP-16). ON = alavanca para cima (−z). No 2D clica-se nos interruptores.
-import { Box, Leg, useCanvasTexture, useFrame, useRef, liveOf } from '../kit.jsx'
+import { RBox, useCanvasTexture, useFrame, useRef, liveOf, geo, mat, mergedGeo, METAL, THREE } from '../kit.jsx'
 import { setInput, releaseButtons } from '../../../services/simControl.js'
 import def, { DIP_X } from '@shared/parts/dipSwitch8.js'
 import { rectOf } from './_groupA.jsx'
@@ -16,6 +16,7 @@ const stateOf = (part, live) => {
   return Array.from({ length: 8 }, (_, i) => s[i] === '1')
 }
 
+// face de cima: "ON" e a seta, os poços escuros das alavancas e os números 1–8
 function drawFace(ctx, w, h) {
   const sx = w / BODY.w
   const sz = h / BODY.d
@@ -24,20 +25,46 @@ function drawFace(ctx, w, h) {
   ctx.fillStyle = '#fff'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  ctx.font = `bold ${Math.round(0.17 * sz)}px Arial`
-  ctx.fillText('ON', (DIP_X(0) - 0.05 + BODY.w / 2) * sx, 0.1 * sz)
+  ctx.font = `bold ${Math.round(0.15 * sz)}px Arial`
+  ctx.fillText('ON', (DIP_X(0) - 0.02 + BODY.w / 2) * sx, 0.1 * sz)
+  // seta do ON
+  const ax = (DIP_X(0) + 0.14 + BODY.w / 2) * sx
+  ctx.beginPath()
+  ctx.moveTo(ax, 0.04 * sz)
+  ctx.lineTo(ax - 0.04 * sx, 0.12 * sz)
+  ctx.lineTo(ax + 0.04 * sx, 0.12 * sz)
+  ctx.fill()
+  ctx.font = `bold ${Math.round(0.11 * sz)}px Arial`
+  ctx.fillText('KE', (DIP_X(7) + BODY.w / 2) * sx, 0.1 * sz)
   ctx.font = `bold ${Math.round(0.16 * sz)}px Arial`
   for (let i = 0; i < 8; i++) {
     const x = (DIP_X(i) + BODY.w / 2) * sx
-    ctx.fillStyle = '#3a0c0c'
+    const g = ctx.createLinearGradient(0, (BODY.d / 2 - WELL.d / 2) * sz, 0, (BODY.d / 2 + WELL.d / 2) * sz)
+    g.addColorStop(0, '#1d0505')
+    g.addColorStop(1, '#4a1010')
+    ctx.fillStyle = g
     ctx.fillRect(x - (WELL.w / 2) * sx, (BODY.d / 2 - WELL.d / 2) * sz, WELL.w * sx, WELL.d * sz)
     ctx.fillStyle = '#fff'
     ctx.fillText(String(i + 1), x, (BODY.d - 0.11) * sz)
   }
 }
 
+// pernas de chapa do DIP-16: ombro a sair do corpo e perna até à placa (fim no pino)
+const legs = () =>
+  mergedGeo('dip8Legs', () =>
+    def.pins.flatMap((p) => {
+      const s = Math.sign(p.pos[2])
+      return [
+        [geo('gull', () => new THREE.BoxGeometry(1, 1, 1)), [p.pos[0], BODY.y0 + 0.06, s * (BODY.d / 2 - 0.08)], [0, 0, 0], [0.12, 0.03, 0.2]],
+        [geo('gull', () => new THREE.BoxGeometry(1, 1, 1)), [p.pos[0], (BODY.y0 + 0.06) / 2, p.pos[2]], [0, 0, 0], [0.05, BODY.y0 + 0.06, 0.025]],
+      ]
+    }),
+  )
+
+// interruptor DIP de 8 vias (21 × 10 mm): corpo vermelho de arestas boleadas, alavancas brancas
+// com estrias que deslizam nos poços e as 16 pernas de chapa
 function Model({ part }) {
-  const tex = useCanvasTexture(drawFace, [], 420, 200)
+  const tex = useCanvasTexture(drawFace, [], 512, 244)
   const sl = useRef([])
   useFrame(() => {
     const s = stateOf(part, liveOf(part.id))
@@ -46,23 +73,23 @@ function Model({ part }) {
   const init = stateOf(part, null)
   return (
     <group>
-      {def.pins.map((p) => (
-        <Leg key={p.id} from={p.pos} to={[p.pos[0], BODY.y0 + 0.1, p.pos[2]]} r={0.03} />
-      ))}
-      <Box size={[BODY.w, BODY.h, BODY.d]} pos={[0, BODY.y0 + BODY.h / 2, 0]} color="#c62828" rough={0.6} />
+      <mesh geometry={legs()} material={mat(METAL.tin, 1, 0.3)} castShadow />
+      <RBox size={[BODY.w, BODY.h, BODY.d]} r={0.04} pos={[0, BODY.y0 + BODY.h / 2, 0]} color="#c62828" rough={0.5} />
       <mesh position={[0, TOP + 0.001, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[BODY.w, BODY.d]} />
-        <meshStandardMaterial map={tex} roughness={0.6} />
+        <planeGeometry args={[BODY.w - 0.04, BODY.d - 0.04]} />
+        <meshStandardMaterial map={tex} roughness={0.5} />
       </mesh>
       {Array.from({ length: 8 }, (_, i) => (
-        <mesh key={i} ref={(m) => (sl.current[i] = m)} position={[DIP_X(i), TOP + 0.04, slZ(init[i])]}>
-          <boxGeometry args={[WELL.w * 0.85, 0.08, SL]} />
-          <meshStandardMaterial color="#f4f4f4" roughness={0.5} />
-        </mesh>
+        <group key={i} ref={(m) => (sl.current[i] = m)} position={[DIP_X(i), 0, slZ(init[i])]}>
+          <mesh position={[0, TOP + 0.03, 0]} geometry={geo('dip8Slider', () => new THREE.BoxGeometry(WELL.w * 0.85, 0.08, SL))} material={mat('#f4f4f4', 0, 0.45)} castShadow />
+          <mesh geometry={ribs()} material={mat('#dcdcdc', 0, 0.5)} />
+        </group>
       ))}
     </group>
   )
 }
+// estrias de cada alavanca
+const ribs = () => mergedGeo('dip8Ribs', () => [-0.05, 0, 0.05].map((z) => [geo('gull', () => new THREE.BoxGeometry(1, 1, 1)), [0, TOP + 0.072, z], [0, 0, 0], [WELL.w * 0.8, 0.008, 0.015]]))
 
 function Overlay2D({ part, info, live, input }) {
   const s = stateOf(part, live)

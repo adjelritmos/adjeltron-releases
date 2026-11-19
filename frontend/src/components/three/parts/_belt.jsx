@@ -5,9 +5,10 @@
 // a correia anda (os dentes deslizam com a rotação da 1.ª polia).
 import { useFrame, useRef, useMemo, mat, THREE } from '../kit.jsx'
 import { simRef } from '../../../contexts/simRef.js'
-import { pulleyR, GT2 } from '@shared/parts/_mech.js'
-import { beltLoop, loopLength, planeBasis, BELT_AXIS_TOL, BELT_PLANE_TOL } from '@shared/parts/_belt.js'
+import { GT2 } from '@shared/parts/_mech.js'
+import { beltLoop, loopLength } from '@shared/parts/_belt.js'
 import { GT2P } from '@shared/parts/gt2Pulley.js'
+import { beltFrame } from './_beltFrame.js'
 
 // perfil (cm, a partir da circunferência primitiva, + para fora)
 const IN_TOOTH = 0.0 // ponta dos dentes
@@ -81,10 +82,6 @@ function beltGeometry(samples, ds, phase, y, w, toothed = true) {
   return g
 }
 
-const _c = new THREE.Vector3()
-const _a = new THREE.Vector3()
-const _x = new THREE.Vector3()
-const _o = new THREE.Vector3()
 const _F = new THREE.Matrix4()
 const _P = new THREE.Matrix4()
 
@@ -111,39 +108,16 @@ export function BeltMesh({ pulleys, parentId, onInfo, loose, y = GT2P.BELT_Y, w 
     const parent = simRef.objects.get(parentId)
     if (!m || !parent) return
     parent.updateWorldMatrix(true, false)
-    // polias presentes, com o eixo da 1.ª
-    const objs = pulleys.map((p) => ({ ...p, o: simRef.objects.get(p.id) })).filter((p) => p.o)
+    // referencial da correia (x = U, y = eixo da 1.ª polia, z = U × eixo) e polias alinhadas
+    const bf = beltFrame(pulleys, y, _F)
     let circles = []
     let phase = 0
-    let ok = objs.length >= 2
-    if (ok) {
-      const first = objs[0].o
-      first.updateWorldMatrix(true, false)
-      _a.set(0, 1, 0).transformDirection(first.matrixWorld).normalize()
-      _o.set(0, y, 0).applyMatrix4(first.matrixWorld)
-      const { u, v } = planeBasis([_a.x, _a.y, _a.z])
-      for (const p of objs) {
-        p.o.updateWorldMatrix(true, false)
-        _x.set(0, 1, 0).transformDirection(p.o.matrixWorld)
-        _c.set(0, y, 0).applyMatrix4(p.o.matrixWorld).sub(_o)
-        if (Math.abs(_x.dot(_a)) < BELT_AXIS_TOL || Math.abs(_c.dot(_a)) > BELT_PLANE_TOL) {
-          ok = false
-          continue
-        }
-        circles.push([_c.x * u[0] + _c.y * u[1] + _c.z * u[2], _c.x * v[0] + _c.y * v[1] + _c.z * v[2], p.r ?? pulleyR(p.teeth ?? 20)])
-      }
+    const ok = !!bf?.ok
+    if (bf) {
+      circles = bf.circles
       // rotação θ da 1.ª polia em torno do eixo → a correia anda −θ·r ao longo do contorno CCW
       // (os dentes em s com (s + phase) no meio do passo: phase = +θ·r desloca-os −θ·r)
-      _x.set(1, 0, 0).transformDirection(first.matrixWorld)
-      const th = Math.atan2(_x.x * v[0] + _x.y * v[1] + _x.z * v[2], _x.x * u[0] + _x.y * u[1] + _x.z * u[2])
-      phase = th * (objs[0].r ?? pulleyR(objs[0].teeth ?? 20))
-      // referencial da correia: x = U = u, y = eixo, z = V = U × eixo (= −v)
-      const U = new THREE.Vector3(...u)
-      const V = new THREE.Vector3().crossVectors(U, _a)
-      // coordenada z = projeção em V: troca-se o sinal de v se for preciso
-      const sgn = V.x * v[0] + V.y * v[1] + V.z * v[2] < 0 ? -1 : 1
-      if (sgn < 0) circles = circles.map(([x, y, r]) => [x, -y, r])
-      _F.makeBasis(U, _a, V).setPosition(_o.x, _o.y, _o.z)
+      phase = bf.theta * bf.r0
       _P.copy(parent.matrixWorld).invert().multiply(_F)
     }
     if (!ok || circles.length < 2) {

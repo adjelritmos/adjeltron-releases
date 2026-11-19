@@ -1,6 +1,17 @@
-// SW-520D: cápsula cilíndrica com duas pernas; inclina-se quando o controlo "Inclinado" está ativo.
-import { Cyl, Leg, inputOf, useFrame, useRef } from '../kit.jsx'
+// SW-520D: cápsula cilíndrica de Ø 6 × 12 mm (manga verde, base vedada a epóxi preto por onde
+// saem as duas pernas estanhadas, anel cravado e tampa metálica abaulada); inclina-se quando o
+// controlo "Inclinado" está ativo.
+import { Leg, inputOf, useFrame, useRef, geo, mat, mergedGeo, METAL, THREE } from '../kit.jsx'
 import def from '@shared/parts/tilt.js'
+
+const v2 = (pts) => pts.map(([r, y]) => new THREE.Vector2(r, y))
+// manga verde (ligeiramente cónica) e as peças metálicas (anel de baixo + tampa abaulada)
+const sleeveGeo = () => geo('tilt:sleeve', () => new THREE.LatheGeometry(v2([[0.27, 0.1], [0.29, 0.12], [0.29, 1.04], [0.275, 1.06]]), 28))
+const metalGeo = () =>
+  mergedGeo('tilt:metal', () => [
+    [new THREE.LatheGeometry(v2([[0.26, 0], [0.3, 0.01], [0.3, 0.12], [0.27, 0.13]]), 28), [0, 0, 0]],
+    [new THREE.LatheGeometry(v2([[0.27, 1.04], [0.3, 1.05], [0.3, 1.12], [0.26, 1.16], [0.16, 1.18], [0, 1.185]]), 28), [0, 0, 0]],
+  ])
 
 function Model({ part }) {
   const body = useRef()
@@ -10,12 +21,13 @@ function Model({ part }) {
   return (
     <group>
       {def.pins.map((p) => (
-        <Leg key={p.id} from={p.pos} to={[0, 0.3, p.pos[2] * 0.6]} />
+        <Leg key={p.id} from={p.pos} to={[0, 0.3, p.pos[2] * 0.8]} r={0.025} color={METAL.tin} />
       ))}
       <group ref={body} position={[0, 0.3, 0]}>
-        <Cyl r={0.29} h={1.15} pos={[0, 0.6, 0]} color="#2e7d32" rough={0.4} />
-        <Cyl r={0.3} h={0.08} pos={[0, 0.04, 0]} color="#c9ccd0" metal={0.8} rough={0.3} />
-        <Cyl r={0.3} h={0.08} pos={[0, 1.18, 0]} color="#c9ccd0" metal={0.8} rough={0.3} />
+        {/* base vedada (epóxi preto) */}
+        <mesh position={[0, 0.005, 0]} geometry={geo('tilt:seal', () => new THREE.CylinderGeometry(0.255, 0.255, 0.012, 24))} material={mat('#111111', 0, 0.35)} />
+        <mesh geometry={sleeveGeo()} material={mat('#2e7d32', 0, 0.38)} castShadow />
+        <mesh geometry={metalGeo()} material={mat('#c9ccd0', 1, 0.28)} castShadow />
       </group>
     </group>
   )

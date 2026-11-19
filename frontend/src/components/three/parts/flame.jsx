@@ -1,19 +1,18 @@
-// Sensor de chama: fototransístor IR (parece um LED preto) virado para a frente.
-import { Cyl, Leg } from '../kit.jsx'
-import { makeModuleUI } from './_analogModule.jsx'
+// Sensor de chama: fototransístor IR de 5 mm (epóxi preto, parece um LED) virado para a
+// frente, trimpot 3296, LM393, LEDs e pinos A0 G + D0 numa placa azul.
+import { Leg } from '../kit.jsx'
+import { makeModuleUI, Led5mm } from './_analogModule.jsx'
 import def from '@shared/parts/flame.js'
 
 function Receiver() {
   return (
     <group>
-      <Leg from={[1.35, 0.17, -0.127]} to={[1.6, 0.4, -0.08]} />
-      <Leg from={[1.35, 0.17, 0.127]} to={[1.6, 0.4, 0.08]} />
-      <Cyl r={0.29} h={0.1} pos={[1.62, 0.4, 0]} rot={[0, 0, -Math.PI / 2]} color="#0b0b0b" />
-      <Cyl r={0.25} h={0.42} pos={[1.86, 0.4, 0]} rot={[0, 0, -Math.PI / 2]} color="#0b0b0b" rough={0.2} />
-      <mesh position={[2.07, 0.4, 0]} rotation={[0, 0, -Math.PI / 2]}>
-        <sphereGeometry args={[0.25, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2]} />
-        <meshStandardMaterial color="#0b0b0b" roughness={0.15} />
-      </mesh>
+      {/* pernas dobradas a 90°: sobem dos furos e seguem deitadas até à base */}
+      <Leg from={[1.35, 0.17, -0.127]} to={[1.35, 0.4, -0.127]} />
+      <Leg from={[1.35, 0.4, -0.127]} to={[1.52, 0.4, -0.08]} />
+      <Leg from={[1.35, 0.17, 0.127]} to={[1.35, 0.4, 0.127]} />
+      <Leg from={[1.35, 0.4, 0.127]} to={[1.52, 0.4, 0.08]} />
+      <Led5mm pos={[1.5, 0.4, 0]} len={0.82} color="#0b0b0b" />
     </group>
   )
 }
@@ -25,5 +24,8 @@ export default makeModuleUI({
   pot: [-0.4, -0.25],
   chip: [0.55, 0.3],
   leds: { pwr: [0.75, -0.45], dout: [1.05, -0.45] },
+  passives: [[0.75, -0.22, 'r', Math.PI / 2], [1.05, -0.22, 'r', Math.PI / 2], [-0.15, 0.35, 'r'], [-0.1, 0.56, 'c'], [-0.45, 0.35, 'r']],
+  silk: [{ text: 'D1', pos: [1.22, 0.45], w: 0.16, d: 0.09 }],
+  pinLabels: ['A0', 'G', '+', 'D0'],
   Extra: Receiver,
 })

@@ -232,6 +232,13 @@ export function sendWorld(bodies, imu, joints, jaws, drop) {
   if (simRef.engine) send({ type: 'world', bodies, imu, joints, jaws, drop })
 }
 
+// imagem de um módulo de câmara (three/CameraFeeds.jsx) para a esp_camera.h do programa:
+// RGB, linha 0 em cima. O buffer é transferido (deixa de ser usável aqui).
+export function sendCamFrame(id, w, h, rgb) {
+  if (!simRef.engine || !worker) return
+  worker.postMessage({ type: 'camFrame', id, w, h, rgb }, [rgb.buffer])
+}
+
 export function setPaused(paused) {
   send({ type: 'pause', paused })
   useStore.getState().set({ paused })
@@ -250,7 +257,7 @@ export function pressButton(id) {
 }
 // controlo interativo de uma peça (slider de sensor, interruptor, joystick, tecla…)
 export function setInput(id, data) {
-  if (data.pressed || data.key) pressedAt = performance.now()
+  if (data.pressed || data.key || data.reset || data.boot || data.off) pressedAt = performance.now()
   simRef.inputs[id] = { ...(simRef.inputs[id] || {}), ...data }
   send({ type: 'input', id, data })
   useStore.getState().set({ inputsTick: Date.now() })
@@ -260,8 +267,8 @@ export function releaseButtons() {
   if (held < MIN_PRESS) return void setTimeout(releaseButtons, MIN_PRESS - held)
   let any = false
   for (const [id, v] of Object.entries(simRef.inputs)) {
-    if (v.pressed || v.key) {
-      simRef.inputs[id] = { ...v, pressed: false, key: null }
+    if (v.pressed || v.key || v.reset || v.boot || v.off) {
+      simRef.inputs[id] = { ...v, pressed: false, key: null, reset: false, boot: false, off: false }
       any = true
     }
   }

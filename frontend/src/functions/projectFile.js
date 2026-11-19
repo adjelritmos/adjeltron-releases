@@ -48,14 +48,31 @@ export function validLibs(libs) {
     .map((l) => ({ name: l.name.slice(0, 80), files: Object.fromEntries(Object.entries(l.files).filter(([k, v]) => typeof v === 'string' && /^[\w.\-/]+$/.test(k))) }))
 }
 
-// abre o seletor de ficheiros (.adjel) e devolve o File escolhido (ou null)
-export function pickProjectFile() {
+// abre o seletor de ficheiros (.adjel) e devolve o ficheiro escolhido ({ name, text() }) ou null
+//  - app desktop (Tauri): janela nativa (comando open_file em src-tauri/src/lib.rs) — no WebView do
+//    macOS um <input accept=".adjel"> deixa os .adjel acinzentados (extensão desconhecida);
+//  - Safari: o mesmo problema do WebKit → sem filtro (readProjectFile valida o conteúdo);
+//  - o <input> fica no documento enquanto o seletor está aberto (alguns browsers não disparam
+//    "change" num input solto, que pode até ser recolhido pelo GC).
+export async function pickProjectFile() {
+  const tauri = globalThis.__TAURI_INTERNALS__
+  if (tauri) {
+    const f = await tauri.invoke('open_file', { filterName: t('wb.file.projectType'), extensions: [EXT.slice(1), 'json'] })
+    return f ? { name: f.name, text: async () => f.text } : null
+  }
+  const webkit = /AppleWebKit/.test(navigator.userAgent) && !/Chrome|Chromium|Edg|CriOS|FxiOS/.test(navigator.userAgent)
   return new Promise((resolve) => {
     const input = document.createElement('input')
     input.type = 'file'
-    input.accept = `${EXT},application/json`
-    input.onchange = () => resolve(input.files?.[0] || null)
-    input.oncancel = () => resolve(null)
+    if (!webkit) input.accept = `${EXT},.json,application/json`
+    input.style.display = 'none'
+    document.body.appendChild(input)
+    const done = (f) => {
+      input.remove()
+      resolve(f)
+    }
+    input.onchange = () => done(input.files?.[0] || null)
+    input.oncancel = () => done(null)
     input.click()
   })
 }

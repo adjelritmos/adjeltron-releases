@@ -1,10 +1,17 @@
-// Módulo microSD Catalex (azul): ranhura metálica com cartão, regulador e conversor de níveis.
-import { Box, Cyl, Pcb, HeaderPins, GlowLed, liveOf, useLabel } from '../kit.jsx'
+// Módulo microSD Catalex (azul, 42 × 24 mm, 2 furos de 3 mm): ranhura push-push de chapa inox
+// (nervuras estampadas, patilhas de solda e a mola de ejeção) com o cartão microSD inserido,
+// regulador AMS1117-3.3 (SOT-223), conversor de níveis 74LVC125A (SOIC-14), passivos e LED.
+import { Box, HeaderPins, GlowLed, liveOf, useLabel, Chip, METAL } from '../kit.jsx'
+import { PcbPlate, Smds, Sot223 } from './_boardKit.jsx'
 import def from '@shared/parts/microSD.js'
-import { Chip } from './_analogModule.jsx'
 
 const T = 0.16
 const LED = [-0.45, -0.95]
+const W = 4.3
+const D = 2.4
+// furos de fixação na ponta da ranhura (relativos ao centro da placa)
+const HOLES = [-1, 1].map((sz) => [W / 2 - 0.25, sz * (D / 2 - 0.25), 0.15])
+const SMDS = [[-0.1, -0.6, 1, 'C'], [-0.1, 0.45, 1, 'C'], [0.2, -0.95, 0, 'r'], [-1.45, 0.45, 1, 'c'], [-0.3, 0.2, 1, 'r'], [-0.3, 0.75, 1, 'r'], [-1.45, -0.6, 1, 'C']]
 
 const fmtSize = (n) => (n >= 1024 ? `${(n / 1024).toFixed(1).replace('.', ',')} KB` : `${n} B`)
 
@@ -12,27 +19,30 @@ function Model({ part }) {
   const card = useLabel([{ text: 'micro', font: 'bold 60px Arial', y: 70 }, { text: 'SD', font: 'bold 70px Arial', y: 140 }], 256, 200)
   return (
     <group>
-      <Pcb size={[4.3, T, 2.4]} pos={[-0.05, 0, 0]} color="#1d4ed8" />
-      {/* ranhura do cartão (chapa metálica) e cartão inserido */}
-      <Box size={[1.45, 0.18, 1.45]} pos={[0.85, T + 0.09, 0]} color="#c9cdd2" metal={0.9} rough={0.3} />
+      <group position={[-0.05, 0, 0]}>
+        <PcbPlate id="microSD" w={W} d={D} t={T} y={0} r={0.08} holes={HOLES} color="#1d4ed8" />
+      </group>
+      {/* ranhura do cartão: chapa inox com nervuras estampadas, patilhas de solda e mola */}
+      <Box size={[1.45, 0.17, 1.45]} pos={[0.85, T + 0.095, 0]} color="#c9cdd2" metal={1} rough={0.32} />
       {[-0.4, 0, 0.4].map((z) => (
-        <Box key={z} size={[1.1, 0.01, 0.06]} pos={[0.85, T + 0.185, z]} color="#9ea3a8" metal={0.9} rough={0.3} />
+        <Box key={z} size={[1.1, 0.012, 0.06]} pos={[0.8, T + 0.186, z]} color="#aeb3b9" metal={1} rough={0.3} />
       ))}
-      {/* parte do cartão que fica de fora */}
+      {[-1, 1].map((s) => [0.4, 1.3].map((x) => <Box key={`${s}${x}`} size={[0.18, 0.03, 0.08]} pos={[x, T + 0.015, s * 0.76]} color={METAL.tin} metal={1} rough={0.3} />))}
+      <Box size={[0.5, 0.012, 0.12]} pos={[0.35, T + 0.186, 0.55]} rot={[0, 0, 0.12]} color="#aeb3b9" metal={1} rough={0.3} />
+      {/* parte do cartão que fica de fora (com as estrias de agarrar) */}
       <Box size={[0.62, 0.08, 1.1]} pos={[1.82, T + 0.1, 0]} color="#1a1a1a" rough={0.5} />
-      <mesh position={[1.82, T + 0.141, 0]} rotation={[-Math.PI / 2, 0, -Math.PI / 2]}>
-        <planeGeometry args={[0.95, 0.55]} />
+      {[0, 1, 2, 3].map((i) => (
+        <Box key={i} size={[0.025, 0.006, 0.9]} pos={[2.02 + i * 0.04, T + 0.142, 0]} color="#2c2c2c" rough={0.6} />
+      ))}
+      <mesh position={[1.78, T + 0.141, 0]} rotation={[-Math.PI / 2, 0, -Math.PI / 2]}>
+        <planeGeometry args={[0.95, 0.4]} />
         <meshBasicMaterial map={card} transparent />
       </mesh>
-      {/* regulador AMS1117 (SOT-223) e 74LVC125 (SOIC-14) */}
-      <Box size={[0.65, 0.16, 0.35]} pos={[-0.9, T + 0.08, -0.6]} color="#151515" />
-      <Box size={[0.3, 0.03, 0.18]} pos={[-0.9, T + 0.015, -0.87]} color="#ccc" metal={0.8} />
-      <Chip pos={[-0.85, T, 0.45]} size={[0.85, 0.15, 0.4]} />
-      {[[-0.1, -0.6], [-0.1, 0.45], [0.2, -0.95]].map(([x, z], i) => (
-        <Box key={i} size={[0.12, 0.06, 0.22]} pos={[x, T + 0.03, z]} color="#c8b089" />
-      ))}
+      {/* regulador AMS1117 (SOT-223), 74LVC125A (SOIC-14) e passivos */}
+      <Sot223 pos={[-0.9, T, -0.6]} label="AMS1117" sub="3.3" />
+      <Chip pos={[-0.85, T, 0.45]} size={[0.86, 0.15, 0.39]} n={7} label="LVC125A" />
+      <Smds id="microSD" y={T} items={SMDS} />
       <GlowLed pos={[LED[0], T + 0.04, LED[1]]} size={[0.16, 0.08, 0.1]} color="#30ff60" read={() => (liveOf(part.id)?.busy ? 1 : 0)} />
-      <Cyl r={0.12} h={T + 0.01} pos={[1.85, T / 2, -1.0]} color="#c9a227" metal={0.8} rough={0.3} seg={12} />
       <HeaderPins pins={def.pins} base={0} up={0.45} />
     </group>
   )

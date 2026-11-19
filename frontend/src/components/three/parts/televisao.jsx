@@ -1,7 +1,11 @@
-// Televisão: pé, coluna, moldura fina e ecrã (virado para +x). Ligada, o ecrã mostra o
-// logótipo de arranque e depois um programa animado desenhado num canvas (desenhos animados,
-// futebol, notícias ou barras de cor) e ilumina a sala com uma luz azulada.
-import { Box, RBox, geo, mat, liveOf, useFrame, useMemo, useRef, THREE } from '../kit.jsx'
+// Televisão LED de ecrã plano (~40"): pé central de alumínio escovado com coluna, painel fino
+// com a moldura estreita, caixa traseira com as grelhas de ventilação, os furos VESA e o painel
+// de ligações, barra de baixo com o logótipo, o recetor IV e o LED de presença; ecrã virado
+// para +x. Ligada, o ecrã mostra o logótipo de arranque e depois um programa animado desenhado
+// num canvas (desenhos animados, futebol, notícias ou barras de cor) e ilumina a sala com uma
+// luz azulada.
+import { Box, RBox, geo, mat, mergedGeo, liveOf, useFrame, useMemo, useRef, THREE } from '../kit.jsx'
+import { Bornes } from './_casaKit.jsx'
 import { TV } from '@shared/parts/televisao.js'
 
 const CW = 256
@@ -198,24 +202,46 @@ function Model({ part }) {
     scr.tex.needsUpdate = true
   })
   const frame = c.moldura || '#16181b'
+  // traseira: grelhas de ventilação, furos VESA e o painel de ligações (uma malha cada)
+  const vents = mergedGeo(`tvVents${W},${H}`, () => {
+    const u = geo('tvUnit', () => new THREE.BoxGeometry(1, 1, 1))
+    const out = []
+    for (const zs of [-1, 1])
+      for (let i = 0; i < 10; i++) out.push([u, [-0.375, Y0 + H * 0.7, zs * (W * 0.12 + i * 0.13)], [0, 0, 0], [0.01, 0.5, 0.05]])
+    return out
+  })
+  const vesa = mergedGeo(`tvVesa${H}`, () => {
+    const cg = geo('tvVesaC', () => new THREE.CylinderGeometry(0.05, 0.05, 0.02, 10).rotateZ(Math.PI / 2))
+    return [-1, 1].flatMap((a) => [-1, 1].map((b) => [cg, [-0.375, Y0 + H / 2 + a * 0.85, b * 0.85]]))
+  })
+  const ports = mergedGeo(`tvPorts${W}`, () => {
+    const u = geo('tvUnit', () => new THREE.BoxGeometry(1, 1, 1))
+    return [0, 1, 2, 3].map((i) => [u, [-0.24, Y0 + 0.6 + i * 0.32, -W * 0.35 - 0.001], [0, 0, 0], [0.12, 0.08, 0.01]])
+  })
   return (
     <group>
-      {/* pé e coluna */}
-      <RBox size={[1.5, 0.18, 3.0]} r={0.08} pos={[0, 0.09, 0]} color="#2a2d31" metal={0.6} rough={0.35} />
-      <Box size={[0.25, Y0, 0.55]} pos={[-0.1, Y0 / 2 + 0.1, 0]} color="#2a2d31" metal={0.6} rough={0.35} />
-      {/* caixa traseira e moldura */}
-      <RBox size={[0.3, H * 0.7, W * 0.7]} r={0.08} pos={[-0.22, Y0 + H / 2, 0]} color="#1e2125" rough={0.5} />
-      <RBox size={[T, H, W]} r={0.06} pos={[0, Y0 + H / 2, 0]} color={frame} rough={0.35} />
+      {/* pé central: base de alumínio escovado com o ressalto e a coluna */}
+      <RBox size={[1.5, 0.08, 3.0]} r={0.035} pos={[0, 0.04, 0]} color="#2a2d31" metal={0.75} rough={0.32} />
+      <RBox size={[0.7, 0.1, 1.1]} r={0.04} pos={[-0.1, 0.12, 0]} color="#2a2d31" metal={0.75} rough={0.32} />
+      <RBox size={[0.22, Y0, 0.5]} r={0.05} pos={[-0.1, Y0 / 2 + 0.12, 0]} color="#2a2d31" metal={0.75} rough={0.32} />
+      {/* caixa traseira (mais grossa em baixo, onde estão a fonte e a placa) e moldura */}
+      <RBox size={[0.3, H * 0.7, W * 0.7]} r={0.1} pos={[-0.22, Y0 + H * 0.45, 0]} color="#1e2125" rough={0.55} />
+      <mesh geometry={vents} material={mat('#0b0c0e', 0, 0.9)} />
+      <mesh geometry={vesa} material={mat('#9aa0a6', 0.9, 0.35)} />
+      <mesh geometry={ports} material={mat('#0b0c0e', 0, 0.9)} />
+      <RBox size={[T * 0.55, H, W]} r={0.05} pos={[-T * 0.22, Y0 + H / 2, 0]} color="#1e2125" rough={0.5} />
+      <RBox size={[T * 0.5, H, W]} r={0.03} pos={[T * 0.25, Y0 + H / 2, 0]} color={frame} metal={0.3} rough={0.3} />
       {/* ecrã (plano virado para +x) */}
       <mesh ref={screen} position={[T / 2 + 0.006, Y0 + H / 2 + 0.05, 0]} rotation={[0, Math.PI / 2, 0]} geometry={geo(`tvScr${W},${H}`, () => new THREE.PlaneGeometry(W - 0.3, H - 0.4))} material={scr.off} />
-      {/* LED de presença e logótipo da marca */}
+      {/* barra de baixo: logótipo, janela do recetor IV e LED de presença */}
+      <Box size={[0.02, 0.06, 0.7]} pos={[T / 2 + 0.005, Y0 + 0.1, 0]} color="#8a8f96" metal={0.8} rough={0.3} />
+      <Box size={[0.02, 0.07, 0.3]} pos={[T / 2 + 0.004, Y0 + 0.1, W / 2 - 0.65]} color="#050608" rough={0.08} />
       <mesh position={[T / 2 + 0.01, Y0 + 0.1, W / 2 - 0.5]}>
         <sphereGeometry args={[0.05, 8, 6]} />
         <meshBasicMaterial ref={led} color="#5a1212" toneMapped={false} />
       </mesh>
-      <Box size={[0.02, 0.06, 0.7]} pos={[T / 2 + 0.005, Y0 + 0.1, 0]} color="#8a8f96" metal={0.8} rough={0.3} />
       {/* bornes atrás */}
-      <Box size={[0.4, 0.3, 1.0]} pos={[-0.55, 0.2, 0]} color="#e9e9e4" />
+      <Bornes pos={[-0.55, 0.2, 0]} size={[0.4, 0.3, 1.0]} />
       <pointLight ref={light} position={[2.5, Y0 + H / 2, 0]} color="#9cc7ff" intensity={0} distance={40} decay={2} />
     </group>
   )

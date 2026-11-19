@@ -1,32 +1,10 @@
 // Barra de 11 LEDs WS2812B: PCB preta estreita, LEDs 5050 cuja cor vem de live.c (0xRRGGBB),
 // pinos nas pontas e uma luz com a cor média.
-import { RBox, Box, HeaderPins, PixelHalo, pixelLevel, useFrame, useRef, THREE, liveOf } from '../kit.jsx'
+import { Pcb, HeaderPins, useFrame, useRef, liveOf } from '../kit.jsx'
+import { Ws2812, Ws2812Bodies, SmdParts } from './_gDisplays.jsx'
 import def, { LEDBAR } from '@shared/parts/barraLedRgb.js'
 
 const ledZ = (i) => (i - (LEDBAR.n - 1) / 2) * LEDBAR.pitch
-
-function Pixel({ id, i }) {
-  const m = useRef()
-  const col = useRef(new THREE.Color())
-  useFrame(() => {
-    const c = liveOf(id)?.c?.[i] ?? 0
-    if (!m.current) return
-    const v = pixelLevel(c, col.current)
-    m.current.emissive.copy(col.current)
-    m.current.emissiveIntensity = v ? 0.6 + 1.6 * v : 0
-    m.current.color.set(v ? '#ffffff' : '#e8e4da')
-  })
-  return (
-    <group position={[0, 0.16, ledZ(i)]}>
-      <Box size={[0.5, 0.12, 0.5]} pos={[0, 0.06, 0]} color="#f2f2f2" />
-      <mesh position={[0, 0.125, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[0.2, 20]} />
-        <meshStandardMaterial ref={m} color="#e8e4da" emissive="#000" toneMapped={false} />
-      </mesh>
-      <PixelHalo id={id} i={i} pos={[0, 0.25, 0]} size={1.2} />
-    </group>
-  )
-}
 
 function AvgLight({ id }) {
   const l = useRef()
@@ -49,13 +27,18 @@ function AvgLight({ id }) {
   return <pointLight ref={l} position={[0, 1.5, 0]} intensity={0} distance={12} />
 }
 
+// placa preta de 10 × 94 mm com os 11 WS2812B 5050 e o condensador de 100 nF de cada um
+const AT = Array.from({ length: LEDBAR.n }, (_, i) => [0, ledZ(i), 0])
+const CAPS = Array.from({ length: LEDBAR.n }, (_, i) => [0.37, ledZ(i), Math.PI / 2, 'c'])
 function Model({ part }) {
   return (
     <group>
-      <RBox size={[LEDBAR.w, 0.16, LEDBAR.len]} r={0.05} pos={[0, 0.08, 0]} color="#141414" rough={0.5} />
+      <Pcb size={[LEDBAR.w, 0.16, LEDBAR.len]} color="#141414" holes={false} />
       {Array.from({ length: LEDBAR.n }, (_, i) => (
-        <Pixel key={i} id={part.id} i={i} />
+        <Ws2812 key={i} id={part.id} i={i} pos={[0, 0.16, ledZ(i)]} halo={1.2} body={false} />
       ))}
+      <Ws2812Bodies at={AT} y={0.16} />
+      <SmdParts list={CAPS} y={0.16} />
       <HeaderPins pins={def.pins} base={0.16} />
       <AvgLight id={part.id} />
     </group>

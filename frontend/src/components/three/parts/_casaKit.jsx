@@ -1,8 +1,10 @@
 // Ajudantes dos modelos 3D do grupo Casa inteligente: texturas procedimentais em cache
 // (tijolo, reboco, pedra, azulejo, ripado, mosaico, soalho, calçada, betão, relva, telha,
 // ardósia, chapa), geometrias com UV em centímetros (a textura repete-se ao tamanho real,
-// sem esticar) e peças comuns (vidro, ferragens, dobradiças).
-import { geo, mat, THREE, Cyl } from '../kit.jsx'
+// sem esticar) e peças comuns (vidro, ferragens, dobradiças, bornes de parafuso, perfis
+// extrudidos, sólidos de revolução, varões e hélices de fio).
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
+import { geo, mat, mergedGeo, THREE, Cyl } from '../kit.jsx'
 
 // ---------------- texturas ----------------
 // cada textura cobre um ladrilho de tw × th cm; as UV das geometrias abaixo estão em cm
@@ -398,6 +400,86 @@ export function shadeGeo(r0, r1, h) {
   })
 }
 
+// contorno fechado com os cantos boleados: pts = [[x, y, r?], ...] (r = raio do canto, 0 = vivo)
+export function roundShape(pts, rDef = 0) {
+  const s = new THREE.Shape()
+  const n = pts.length
+  for (let i = 0; i < n; i++) {
+    const [x, y, rr] = pts[i]
+    const r = rr ?? rDef
+    const p = pts[(i + n - 1) % n]
+    const q = pts[(i + 1) % n]
+    if (!r) {
+      if (i) s.lineTo(x, y)
+      else s.moveTo(x, y)
+      continue
+    }
+    // recua r ao longo das duas arestas e curva pelo vértice
+    const d1 = Math.hypot(p[0] - x, p[1] - y) || 1
+    const d2 = Math.hypot(q[0] - x, q[1] - y) || 1
+    const k1 = Math.min(r, d1 / 2) / d1
+    const k2 = Math.min(r, d2 / 2) / d2
+    const a = [x + (p[0] - x) * k1, y + (p[1] - y) * k1]
+    const b = [x + (q[0] - x) * k2, y + (q[1] - y) * k2]
+    if (i) s.lineTo(a[0], a[1])
+    else s.moveTo(a[0], a[1])
+    s.quadraticCurveTo(x, y, b[0], b[1])
+  }
+  s.closePath()
+  return s
+}
+// perfil (forma no plano: x da forma → z, y da forma → y) extrudido segundo x, de −len/2 a len/2.
+// Como prismXGeo, mas com curvas e chanfro opcional (bevel = tamanho do boleado das arestas).
+export function extrudeXGeo(key, makeShape, len, bevel = 0, curveSegments = 8) {
+  return geo(`cextx${key}|${len}|${bevel}`, () => {
+    const g = new THREE.ExtrudeGeometry(makeShape(), {
+      depth: Math.max(1e-3, len - 2 * bevel),
+      bevelEnabled: bevel > 0,
+      bevelThickness: bevel,
+      bevelSize: bevel,
+      bevelSegments: 2,
+      curveSegments,
+    })
+    g.translate(0, 0, bevel)
+    g.rotateY(-Math.PI / 2)
+    g.translate(len / 2, 0, 0)
+    g.computeVertexNormals()
+    return g
+  })
+}
+// sólido de revolução em torno de y a partir de um perfil [[r, y], ...]
+export function latheGeo(key, pts, seg = 32) {
+  return geo(`clathe${key}`, () => new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(Math.max(1e-4, r), y)), seg))
+}
+// varão (cilindro de raio r) entre dois pontos, como item de mergedGeo (cilindro unitário partilhado)
+const _ra = new THREE.Vector3()
+const _rb = new THREE.Vector3()
+const _rq = new THREE.Quaternion()
+const _re = new THREE.Euler()
+const _ry = new THREE.Vector3(0, 1, 0)
+export function rodItem(a, b, r, seg = 6) {
+  _ra.set(...a)
+  _rb.set(...b)
+  const d = _rb.clone().sub(_ra)
+  const L = d.length()
+  _rq.setFromUnitVectors(_ry, L > 1e-9 ? d.divideScalar(L) : _ry)
+  _re.setFromQuaternion(_rq)
+  const unit = geo(`crodUnit${seg}`, () => new THREE.CylinderGeometry(1, 1, 1, seg, 1, true))
+  return [unit, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2], [_re.x, _re.y, _re.z], [r, Math.max(L, 1e-4), r]]
+}
+// fio enrolado em hélice (resistências, molas, enrolamentos) ao longo de y, de y0 a y1
+export function helixGeo(key, R, r, y0, y1, turns, seg = 10) {
+  return geo(`chelix${key}`, () => {
+    const pts = []
+    const n = Math.max(8, Math.round(turns * seg))
+    for (let i = 0; i <= n; i++) {
+      const a = (i / n) * turns * Math.PI * 2
+      pts.push(new THREE.Vector3(Math.cos(a) * R, y0 + ((y1 - y0) * i) / n, Math.sin(a) * R))
+    }
+    return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), n, r, 4, false)
+  })
+}
+
 // ---------------- materiais e peças comuns ----------------
 export const GLASS = () => mat('#cfe8f7', 0, 0.04, { transparent: true, opacity: 0.32, depthWrite: false })
 export const STEEL = '#c4cbd0'
@@ -407,4 +489,51 @@ export const BLACK_IRON = '#2c2c2c'
 // nó de dobradiça vertical (cilindro segundo y) centrado em (x, y, z)
 export function Knuckle({ pos, h = 1.0, r = 0.11, color = STEEL }) {
   return <Cyl r={r} h={h} pos={pos} color={color} metal={0.85} rough={0.3} seg={12} />
+}
+
+// cabeça de parafuso com fenda/cruz, deitada (eixo y), no topo em y = 0
+export function ScrewHead({ pos, r = 0.08, rotY = 0, color = '#c9ced3', cross = true }) {
+  const slot = geo('cscrewSlot', () => new THREE.BoxGeometry(1, 1, 1))
+  return (
+    <group position={pos} rotation={[0, rotY, 0]}>
+      <mesh position={[0, -0.02, 0]} geometry={geo(`cscrew${r}`, () => new THREE.SphereGeometry(r, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.45, 1))} material={mat(color, 0.9, 0.3)} />
+      <mesh position={[0, -0.005 + r * 0.22, 0]} geometry={slot} scale={[r * 1.6, 0.03, r * 0.28]} material={mat('#3c4044', 0.6, 0.6)} />
+      {cross && <mesh position={[0, -0.005 + r * 0.22, 0]} geometry={slot} scale={[r * 0.28, 0.03, r * 1.6]} material={mat('#3c4044', 0.6, 0.6)} />}
+    </group>
+  )
+}
+
+// régua de bornes de parafuso de 2 (ou n) vias em poliamida, como as dos aparelhos e dos
+// candeeiros: corpo com as divisórias entre vias, parafusos de cabeça em cruz na face +y e as
+// entradas dos fios (com o grampo de latão) na face −x. pos = centro do corpo; zs = posições
+// das vias em z; holeY = altura das entradas em relação ao centro.
+export function Bornes({ pos, size = [0.4, 0.3, 1.0], zs = [-0.35, 0.35], holeY = 0, color = '#eeeee8' }) {
+  const [sx, sy, sz] = size
+  const ribs = mergedGeo(`cbornRib${sx},${sy},${sz},${zs.join(',')}`, () => {
+    const b = geo('cunitBox', () => new THREE.BoxGeometry(1, 1, 1))
+    const out = []
+    // divisórias entre as vias e nas pontas (sobressaem um pouco do topo)
+    const cuts = [-sz / 2 + 0.03, ...zs.slice(1).map((z, i) => (z + zs[i]) / 2), sz / 2 - 0.03]
+    for (const z of cuts) out.push([b, [0, sy / 2 + 0.025, z], [0, 0, 0], [sx, 0.05, 0.05]])
+    return out
+  })
+  const mouths = mergedGeo(`cbornMouth${sx},${sy},${zs.join(',')},${holeY}`, () => {
+    const b = geo('cunitBox', () => new THREE.BoxGeometry(1, 1, 1))
+    return zs.map((z) => [b, [-sx / 2 + 0.01, holeY, z], [0, 0, 0], [0.03, Math.min(0.16, sy * 0.5), 0.2]])
+  })
+  const clamps = mergedGeo(`cbornClamp${sx},${sy},${zs.join(',')},${holeY}`, () => {
+    const b = geo('cunitBox', () => new THREE.BoxGeometry(1, 1, 1))
+    return zs.map((z) => [b, [-sx / 2 + 0.03, holeY, z], [0, 0, 0], [0.025, Math.min(0.1, sy * 0.32), 0.13]])
+  })
+  return (
+    <group position={pos}>
+      <mesh geometry={geo(`cbornBody${sx},${sy},${sz}`, () => new RoundedBoxGeometry(sx, sy, sz, 1, Math.min(0.03, sy * 0.15)))} material={mat(color, 0, 0.55)} castShadow receiveShadow />
+      <mesh geometry={ribs} material={mat(color, 0, 0.55)} />
+      <mesh geometry={mouths} material={mat('#1a1a1a', 0, 0.9)} />
+      <mesh geometry={clamps} material={mat(BRASS, 0.9, 0.35)} />
+      {zs.map((z) => (
+        <ScrewHead key={z} pos={[0.02, sy / 2 + 0.005, z]} r={Math.min(0.1, sx * 0.24)} rotY={0.4 + z} color="#c7ccd1" />
+      ))}
+    </group>
+  )
 }

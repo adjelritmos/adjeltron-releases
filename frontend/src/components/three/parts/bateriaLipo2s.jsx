@@ -1,53 +1,70 @@
-// LiPo 2S 2200 mAh: bloco com manga impressa azul, fios de silicone até à ficha T vermelha e o
-// cabo de balanceamento (branco, 3 vias).
-import { Box, RBox, Leg, useCanvasTexture } from '../kit.jsx'
+// LiPo 2S 2200 mAh 30C (≈ 105 × 34 × 18 mm): bolsa de células em manga azul impressa, arestas
+// almofadadas, tampa rígida na ponta, fios de silicone 14 AWG até à ficha T (Deans) vermelha com
+// as duas lâminas em T e o cabo de balanceamento JST-XH de 3 vias.
+import { Box, RBox, Cyl, Leg, METAL, THREE, useCanvasTexture } from '../kit.jsx'
 import def from '@shared/parts/bateriaLipo2s.js'
+import { LipoPack, BalanceLead } from './lipo3s.jsx'
 import { Badge } from './group-c-ui.jsx'
 
 const [L, H, W] = def.size
 const pin = (id) => def.pins.find((p) => p.id === id).pos
 
-function Model() {
-  const wrap = useCanvasTexture(
-    (ctx, w, h) => {
-      const g = ctx.createLinearGradient(0, 0, w, h)
-      g.addColorStop(0, '#0d47a1')
-      g.addColorStop(1, '#1565c0')
-      ctx.fillStyle = g
-      ctx.fillRect(0, 0, w, h)
-      ctx.fillStyle = '#e0e0e0'
-      ctx.fillRect(0, h * 0.74, w, h * 0.08)
-      ctx.fillStyle = '#fff'
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.font = 'bold 70px Arial'
-      ctx.fillText('2200mAh 2S', w / 2, h * 0.3)
-      ctx.font = 'bold 38px Arial'
-      ctx.fillText('7.4V · 30C · LiPo', w / 2, h * 0.58)
-    },
-    ['lipo2s'],
-    512,
-    170,
-  )
+const shade = (c, l) => new THREE.Color(c).offsetHSL(0, 0, l).getStyle()
+// manga na cor escolhida (config.color)
+function drawLabel(ctx, w, h, color = '#1565c0') {
+  const dark = shade(color, -0.12)
+  const g = ctx.createLinearGradient(0, 0, w, h)
+  g.addColorStop(0, dark)
+  g.addColorStop(1, color)
+  ctx.fillStyle = g
+  ctx.fillRect(0, 0, w, h)
+  ctx.fillStyle = '#e8eef7'
+  ctx.fillRect(0, h * 0.74, w, h * 0.1)
+  ctx.fillStyle = 'rgba(255,255,255,0.12)'
+  for (let i = 0; i < 6; i++) ctx.fillRect(w * (0.55 + i * 0.07), 0, w * 0.03, h * 0.74)
+  ctx.fillStyle = '#fff'
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'middle'
+  ctx.font = 'bold 84px Arial'
+  ctx.fillText('2200mAh', w * 0.04, h * 0.28)
+  ctx.font = 'bold 44px Arial'
+  ctx.fillText('7.4V  2S1P  30C', w * 0.04, h * 0.56)
+  ctx.textAlign = 'right'
+  ctx.font = 'bold 64px Arial'
+  ctx.fillText('LiPo', w * 0.96, h * 0.3)
+  ctx.font = 'bold 30px Arial'
+  ctx.fillText('16.28Wh', w * 0.96, h * 0.56)
+  ctx.fillStyle = dark
+  ctx.textAlign = 'center'
+  ctx.font = 'bold 24px Arial'
+  ctx.fillText('USE A LIPO BALANCE CHARGER ONLY · MAX 8.4V', w / 2, h * 0.79)
+}
+
+function Model({ part }) {
+  const color = part?.config?.color || def.config.color
+  const tex = useCanvasTexture((c, w, h) => drawLabel(c, w, h, color), ['lipo2s-2', color], 1024, 340)
   const ty = pin('+')[1]
   const tx = pin('+')[0] - 0.4
   return (
     <group>
-      <RBox size={[L, H, W]} r={0.12} pos={[0, H / 2, 0]} color="#0f3f8f" rough={0.5} />
-      <mesh position={[0, H + 0.003, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[L - 0.3, W - 0.25]} />
-        <meshBasicMaterial map={wrap} />
-      </mesh>
-      {/* fios de silicone até à ficha T */}
-      <Leg from={[L / 2 - 0.1, 0.9, -0.35]} to={[tx - 0.3, ty, -0.35]} r={0.11} color="#e53935" />
-      <Leg from={[L / 2 - 0.1, 0.9, 0.35]} to={[tx - 0.3, ty, 0.35]} r={0.11} color="#1a1a1a" />
+      <LipoPack L={L} H={H} W={W} tex={tex} color={shade(color, -0.15)} cap="#0a0a0a" />
+      {/* fios de silicone até à ficha T, com manga termorretrátil na ficha */}
+      <Leg from={[L / 2 - 0.1, 0.9, -0.35]} to={[tx - 0.5, ty, -0.35]} r={0.1} color="#d32f2f" />
+      <Leg from={[L / 2 - 0.1, 0.9, 0.35]} to={[tx - 0.5, ty, 0.35]} r={0.1} color="#1a1a1a" />
+      <Cyl r={0.3} h={0.3} pos={[tx - 0.5, ty, 0]} rot={[0, 0, Math.PI / 2]} color="#1a1a1a" rough={0.35} seg={14} />
+      {/* ficha T (Deans): corpo de nylon vermelho com estrias de agarrar e as lâminas em T */}
       <RBox size={[0.75, 0.75, 1.5]} r={0.08} pos={[tx, ty, 0]} color="#c62828" rough={0.45} />
-      {[-0.35, 0.35].map((z, i) => (
-        <Box key={z} size={[0.1, i ? 0.42 : 0.12, i ? 0.12 : 0.42]} pos={[tx + 0.4, ty, z]} color="#d4af37" metal={0.9} rough={0.3} />
+      {[-0.2, 0, 0.2].map((x) => (
+        <Box key={x} size={[0.06, 0.77, 1.1]} pos={[tx + x, ty, 0]} color="#b71c1c" rough={0.5} />
       ))}
-      {/* cabo de balanceamento */}
-      <Leg from={[L / 2 - 0.1, 1.5, 1.1]} to={[L / 2 + 0.9, 1.3, 1.35]} r={0.05} color="#eee" />
-      <Box size={[0.35, 0.3, 0.8]} pos={[L / 2 + 1.1, 1.3, 1.35]} color="#f5f5f5" />
+      <Box size={[0.02, 0.5, 1.2]} pos={[tx + 0.376, ty, 0]} color="#5d0f0f" />
+      {[-0.35, 0.35].map((z, i) => (
+        <Box key={z} size={[0.12, i ? 0.42 : 0.1, i ? 0.1 : 0.42]} pos={[tx + 0.4, ty, z]} color={METAL.gold} metal={1} rough={0.25} />
+      ))}
+      {/* + moldado junto à lâmina horizontal */}
+      <Box size={[0.14, 0.02, 0.035]} pos={[tx, ty + 0.38, -0.5]} color="#8e1515" />
+      <Box size={[0.035, 0.02, 0.14]} pos={[tx, ty + 0.38, -0.5]} color="#8e1515" />
+      <BalanceLead from={[L / 2 - 0.1, 1.5, 1.1]} to={[L / 2 + 1.1, 1.3, 1.35]} n={3} />
     </group>
   )
 }

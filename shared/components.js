@@ -381,6 +381,9 @@ export const DEFS = {
     pins: SONAR_ZS.map((z, i) => ({ id: ['VCC', 'Trig', 'Echo', 'GND'][i], pos: sonarPin(i, 'baixo').pos, kind: ['pwr', 'in', 'out', 'gnd'][i], dir: [0, -1, 0] })),
     // orientação própria dos pinos (a placa está de pé e os pinos saem do bordo, não da face)
     pinOrient: { d0: 'baixo', options: SONAR_MODES, labels: SONAR_LABELS, geom: (i, mode) => sonarPin(i, mode) },
+    // um sensor novo vem com a barra em ângulo reto, pinos para trás (como o utilizador prefere e
+    // como se monta num robô); os projetos já guardados sem pinosDir ficam como estavam (para baixo)
+    config: { pinosDir: 'tras' },
     view2d: { view: 'front', z: [-2.35, 2.35], y: [-0.1, 2.75] },
   },
   chassis: {

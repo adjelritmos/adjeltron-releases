@@ -1,4 +1,4 @@
-// Fogu para placas com a biblioteca mcu (https://fogulang.microaitec.com/libs/mcu, v0.7.0):
+// Fogu para placas com a biblioteca mcu (https://fogulang.microaitec.com/libs/mcu, v0.8.0):
 // o mesmo ficheiro .fg que o "fogu mcu build/run" compila para o chip corre aqui no simulador.
 // Este compilador segue o subconjunto e a API da biblioteca e gera C++ (Arduino) com um pequeno
 // runtime (FgPin, FgAdc, FgPwm, FgBytes, FgI2c, eventos) que depois segue o caminho normal:
@@ -9,13 +9,16 @@
 // if / else (condições bool), while, loop, for i in a..b, for x in bytes, break / continue,
 // return, print, modelos `…${x}…`, operadores de bits, handlers (fn de topo ou () => { … }).
 // Não há: floats, listas, mapas (exceto as opções { freq: 1000 } das chamadas), structs, match,
-// nil, ?, fg / chan, outros módulos.
+// nil, ?, fg / chan, outros módulos além da mcu e dos drivers dela (import dht from
+// "mcu/drivers/dht": ver drivers.js — cada driver vira a biblioteca Arduino simulada equivalente).
 //
 // O programa corre de cima para baixo (o código do topo); os handlers (pin.onPress, mcu.every,
 // mcu.serial.onReceive…) correm durante mcu.delay / mcu.poll, uma vez por volta de cada ciclo
 // e depois de o código do topo acabar — como na biblioteca.
 import { DEFS, boardProfile } from '../../../../shared/components.js'
 import { RUNTIME } from './runtime.js'
+import { DRIVERS, spiPins } from './drivers.js'
+import { uartCpp, storageCpp, TASK_DECL, taskCpp, netCpp, netHeaders } from './mcuExtras.js'
 import { m as L } from '../../../../shared/i18n.js' // L(pt, en): mensagens no idioma da interface
 
 export class FoguError extends Error {
@@ -136,7 +139,11 @@ function lex(src) {
     }
     m = src.slice(i).match(/^[A-Za-z_$][\w$]*/)
     if (m) {
-      push(KW.has(m[0]) ? { t: 'kw', v: m[0] } : { t: 'id', v: m[0] })
+      // `loop` só é instrução antes de `{` (o Fogu deixa usar loop como nome: let loop = false)
+      const prevT = toks[toks.length - 1]
+      const atStmt = !prevT || prevT.t === 'nl' || (prevT.t === 'op' && ['{', '}', ';'].includes(prevT.v))
+      const kw = KW.has(m[0]) && !(m[0] === 'loop' && !(atStmt && /^\s*\{/.test(src.slice(i + m[0].length))))
+      push(kw ? { t: 'kw', v: m[0] } : { t: 'id', v: m[0] })
       i += m[0].length
       continue
     }
@@ -259,7 +266,16 @@ function parse(src, lineOffset = 0) {
       return fnDecl(ln, top)
     }
     if (isKw('struct') || isKw('interface') || isKw('embed')) fail(NOT_MCU(peek().v, L('use variáveis separadas e funções', 'use separate variables and functions')), ln)
-    if (isKw('fg') || isKw('select')) fail(NOT_MCU(peek().v, L('use mcu.every(1s, fn), onPress(…) ou o padrão de mcu.millis()', 'use mcu.every(1s, fn), onPress(…) or the mcu.millis() pattern')), ln)
+    // fg tarefa(): corre uma fn de topo como tarefa (o mesmo que mcu.task(tarefa))
+    if (isKw('fg')) {
+      next()
+      const t = next()
+      if (t.t !== 'id') fail(L('fg nome(): o nome de uma fn de topo sem parâmetros', 'fg name(): the name of a top-level fn with no parameters'), ln)
+      expect('op', '(', '(')
+      expect('op', ')', ')')
+      return { k: 'fg', name: t.v, line: ln }
+    }
+    if (isKw('select')) fail(NOT_MCU(peek().v, L('use mcu.every(1s, fn), onPress(…) ou o padrão de mcu.millis()', 'use mcu.every(1s, fn), onPress(…) or the mcu.millis() pattern')), ln)
     if (isKw('match')) fail(NOT_MCU('match', L('use if / else if', 'use if / else if')), ln)
     if (isKw('let') || isKw('const')) {
       const kind = next().v
@@ -457,6 +473,14 @@ function parse(src, lineOffset = 0) {
       next()
       return { k: 'tmpl', parts: t.parts.map((x) => (typeof x === 'string' ? x : parse(x.src, x.line - 1).expr())), line: ln }
     }
+    if (isKw('fg')) {
+      next()
+      const t = next()
+      if (t.t !== 'id') fail(L('fg nome(): o nome de uma fn de topo sem parâmetros', 'fg name(): the name of a top-level fn with no parameters'), ln)
+      expect('op', '(', '(')
+      expect('op', ')', ')')
+      return { k: 'fgcall', name: t.v, line: ln }
+    }
     if (isKw('true') || isKw('false')) return { k: 'bool', v: next().v === 'true', line: ln }
     if (isKw('nil')) fail(NOT_MCU('nil'), ln)
     if (isKw('match')) fail(NOT_MCU('match', L('use if / else if', 'use if / else if')), ln)
@@ -510,6 +534,9 @@ function boardInfo(boardType) {
   if (!fam) fail(L(`a biblioteca mcu não suporta a placa ${DEFS[type]?.name || type} (placas: ${MCU_BOARDS})`, `the mcu library does not support the board ${DEFS[type]?.name || type} (boards: ${MCU_BOARDS.replace(' e ', ' and ')})`), 0)
   const pinNum = (name, line) => {
     const n = String(name)
+    // "analog0"…: as entradas analógicas do chip pela ordem da tabela (como na mcu)
+    const an = /^analog(\d+)$/.exec(n)
+    if (an && adcPins[+an[1]] != null) return adcPins[+an[1]]
     let i = prof.pins.indexOf(n)
     if (i < 0 && prof.consts[n] != null && !/^(LED_BUILTIN|SDA|SCL|PIN_|DAC|T\d)/.test(n)) i = prof.consts[n]
     if (i < 0 && (fam === 'uno' || fam === 'nano')) {
@@ -529,8 +556,8 @@ function boardInfo(boardType) {
   const BUTTON = { uno: 2, nano: 2, pico: 15, esp32: 0, bluepill: 0 }[fam]
   const avr = fam === 'uno' || fam === 'nano'
   const BP_PWM = [8, 9, 10, 11, 0, 1, 2, 3, 6, 7, 16, 17, 22, 23, 24, 25]
-  const pwmOk = (i) => (avr ? [3, 9, 10, 11].includes(i) : fam === 'bluepill' ? BP_PWM.includes(i) : fam === 'esp32' ? !(i >= 34 && i <= 39) : true)
-  const pwmList = avr ? L('D3, D9, D10, D11 (o Timer0 de D5/D6 é o relógio)', 'D3, D9, D10, D11 (Timer0 on D5/D6 is the clock)') : fam === 'bluepill' ? 'PA0–PA3, PA6–PA11, PB0, PB1, PB6–PB9' : L('qualquer saída exceto GPIO34–39', 'any output except GPIO34–39')
+  const pwmOk = (i) => (avr ? [3, 5, 9, 10, 11].includes(i) : fam === 'bluepill' ? BP_PWM.includes(i) : fam === 'esp32' ? !(i >= 34 && i <= 39) : true)
+  const pwmList = avr ? L('D3, D5 (só 1 kHz), D9, D10, D11 (o Timer0 do D6 é o relógio)', 'D3, D5 (1 kHz only), D9, D10, D11 (Timer0 on D6 is the clock)') : fam === 'bluepill' ? 'PA0–PA3, PA6–PA11, PB0, PB1, PB6–PB9' : L('qualquer saída exceto GPIO34–39', 'any output except GPIO34–39')
   const adcPins = fam === 'uno' ? [14, 15, 16, 17, 18, 19] : fam === 'nano' ? [14, 15, 16, 17, 18, 19, 20, 21] : fam === 'pico' ? [26, 27, 28, 29] : fam === 'esp32' ? [32, 33, 34, 35, 36, 37, 38, 39] : [0, 1, 2, 3, 4, 5, 6, 7, 16, 17]
   const adcList = { uno: 'A0–A5', nano: 'A0–A7', pico: 'GP26–GP29', esp32: 'GPIO32–GPIO39 (ADC1)', bluepill: 'PA0–PA7, PB0, PB1' }[fam]
   // leitura bruta e escala: 10 bits (AVR) / 12 bits (os outros) e a tensão de referência
@@ -540,15 +567,31 @@ function boardInfo(boardType) {
 
 // ---------------------------------------------------------------- tipos
 // 'int' 'bool' 'dur' 'str' 'bytes' 'pin' 'adc' 'pwm' 'i2c' 'void'
-const ANN = { int: 'int', int8: 'int', int16: 'int', int32: 'int', uint8: 'int', uint16: 'int', uint32: 'int', uint: 'int', byte: 'int', rune: 'int', bool: 'bool', duration: 'dur', str: 'str', char: 'str', bytes: 'bytes', pin: 'pin', adc: 'adc', pwm: 'pwm', i2c: 'i2c' }
-const CT = { int: 'long', bool: 'bool', dur: 'long', str: 'String', bytes: 'FgBytes', pin: 'FgPin', adc: 'FgAdc', pwm: 'FgPwm', i2c: 'FgI2c', void: 'void' }
+const ANN = { int: 'int', int8: 'int', int16: 'int', int32: 'int', uint8: 'int', uint16: 'int', uint32: 'int', uint: 'int', byte: 'int', rune: 'int', bool: 'bool', duration: 'dur', str: 'str', char: 'str', bytes: 'bytes', pin: 'pin', adc: 'adc', pwm: 'pwm', i2c: 'i2c', spi: 'spi', timer: 'timer', uart: 'uart', atomic: 'atomic', mutex: 'mutex', task: 'task', request: 'req', response: 'resp', mqtt: 'mqtt', message: 'msg' }
+const CT = { int: 'long', bool: 'bool', dur: 'long', str: 'String', bytes: 'FgBytes', pin: 'FgPin', adc: 'FgAdc', pwm: 'FgPwm', i2c: 'FgI2c', spi: 'FgSpi', timer: 'FgTimer', uart: 'FgUart', chanI: 'FgChanI', chanS: 'FgChanS', atomic: 'FgAtomic', mutex: 'FgMutex', task: 'FgTask', req: 'FgReq', resp: 'FgResp', mqtt: 'FgMqtt', msg: 'FgMsg', void: 'void' }
+// nomes do programa que chocam com o C++/Arduino gerado (ou com o JavaScript do tradutor):
+// saem com o prefixo fg_ (let loop = false → fg_loop)
+const RESERVED = new Set('setup loop main delay millis micros Serial String Wire SPI EEPROM random randomSeed min max abs map round sq sqrt pow sin cos tan atan2 floor ceil constrain byte word boolean int long char float double bool short unsigned signed void auto register static volatile extern inline const case default switch goto do typedef namespace using virtual public private protected operator friend enum union struct class template this new delete sizeof throw try catch and or not xor bitand bitor compl printf yield interrupts noInterrupts tone noTone pinMode digitalWrite digitalRead analogRead analogWrite pulseIn shiftOut shiftIn attachInterrupt detachInterrupt isnan time exit abort free malloc NULL HIGH LOW INPUT OUTPUT INPUT_PULLUP LED_BUILTIN PI DEC HEX BIN arguments eval function var let await of typeof instanceof with export import super null undefined NaN Infinity Math Object Array Number Symbol Map Set JSON console window globalThis Date Promise Error'.split(' '))
+const nm = (n) => (RESERVED.has(n) || n.startsWith('__') ? `fg_${n}` : n)
 const SIZED = { int8: ['int8_t', -128, 127], uint8: ['uint8_t', 0, 255], byte: ['uint8_t', 0, 255], int16: ['int16_t', -32768, 32767], uint16: ['uint16_t', 0, 65535], int32: ['long'], uint32: ['long', 0, 2147483647], uint: ['long', 0, 2147483647], rune: ['long'] }
-const UNSUPPORTED = new Set(['spi', 'uart', 'display', 'touch', 'rgb', 'sd', 'storage', 'fs', 'ui', 'wifi', 'http', 'tcp', 'udp', 'websocket', 'mqtt', 'espnow', 'ble', 'lora', 'rfid', 'zigbee', 'usb', 'task', 'spawn', 'channel', 'atomic', 'mutex', 'isrQueue', 'timer', 'deepSleep', 'critical', 'interrupts', 'cores', 'coreId', 'watchdog', 'handled', 'missed', 'inInterrupt', 'tasks', 'taskInfo', 'tasksSupported', 'cpuMain'])
+const UNSUPPORTED = new Set(['display', 'touch', 'rgb', 'sd', 'fs', 'ui', 'net', 'tcp', 'udp', 'websocket', 'espnow', 'ble', 'lora', 'rfid', 'zigbee', 'usb', 'deepSleep', 'watchdog'])
 const METHODS = {
-  pin: { output: 'pin', input: 'pin', inputPullUp: 'pin', inputPullDown: 'pin', high: 'void', low: 'void', toggle: 'void', write: 'void', read: 'bool', onPress: 'void', onRelease: 'void', onEdge: 'void', onChange: 'void', onClick: 'void', onDblClick: 'void', onInterrupt: 'void', pulseCount: 'int', resetPulseCount: 'void' },
+  pin: { off: 'void', on: 'void', detachInterrupt: 'void', output: 'pin', input: 'pin', inputPullUp: 'pin', inputPullDown: 'pin', high: 'void', low: 'void', toggle: 'void', write: 'void', read: 'bool', onPress: 'void', onRelease: 'void', onEdge: 'void', onChange: 'void', onClick: 'void', onDblClick: 'void', onInterrupt: 'void', pulseCount: 'int', resetPulseCount: 'void' },
   adc: { read: 'int', millivolts: 'int', bits: 'int', onChange: 'void', onAbove: 'void', onBelow: 'void' },
   pwm: { duty: 'void', dutyFine: 'void', off: 'void' },
   i2c: { probe: 'bool', write: 'bool', read: 'bytes', writeRead: 'bytes' },
+  timer: { cancel: 'void', restart: 'void', running: 'bool', count: 'int', period: 'int', setPeriod: 'void' },
+  uart: { print: 'void', write: 'void', read: 'int', available: 'bool', readBytes: 'bytes', readLine: 'str', flush: 'void', baud: 'int', onReceive: 'void' },
+  chanI: { send: 'void', trySend: 'bool', receive: 'int', tryReceive: 'int', available: 'bool', full: 'bool', count: 'int' },
+  chanS: { send: 'void', trySend: 'bool', receive: 'str', tryReceive: 'str', available: 'bool', full: 'bool', count: 'int' },
+  atomic: { get: 'int', set: 'void', add: 'int', sub: 'int', increment: 'int', decrement: 'int' },
+  mutex: { lock: 'void', tryLock: 'bool', unlock: 'void', locked: 'bool' },
+  task: { ok: 'bool', stop: 'void', running: 'bool', name: 'str', stackUsed: 'int', stackSize: 'int', switches: 'int', cpu: 'int' },
+  req: { method: 'str', path: 'str', query: 'str', header: 'str', body: 'str', form: 'str', html: 'void', text: 'void', json: 'void', send: 'void' },
+  resp: { status: 'int', ok: 'bool', text: 'str', body: 'bytes' },
+  mqtt: { publish: 'bool', subscribe: 'bool', connected: 'bool', close: 'void' },
+  msg: { topic: 'str', text: 'str', data: 'bytes' },
+  spi: {}, // transfer / write / read… ainda não simulados: o spi serve para os drivers (max7219, hc595, mcp3008)
   bytes: { len: 'int', push: 'void', text: 'str' },
   str: { len: 'int', isEmpty: 'bool', startsWith: 'bool', endsWith: 'bool', contains: 'bool', indexOf: 'int', slice: 'str', trim: 'str', toUpperCase: 'str', toLowerCase: 'str', code: 'int', bytes: 'bytes' },
 }
@@ -563,9 +606,18 @@ export function foguToCpp(src, { board = 'arduino' } = {}) {
   // ---------- importações ----------
   let mcuName = null
   const imported = {}
+  const drv = {} // nome local → driver (import dht from "mcu/drivers/dht")
+  const drvUsed = {} // driver → { cfg: valores fixos do begin, line }
   for (const s of prog) {
     if (s.k !== 'import') continue
-    if (s.from !== 'mcu') fail(L(`o módulo "${s.from}" não existe no Fogu das placas — a única importação é a biblioteca: import mcu from "mcu"`, `the module "${s.from}" does not exist in Fogu for boards — the only import is the library: import mcu from "mcu"`), s.line)
+    const dm = /^mcu\/drivers\/(\w+)$/.exec(s.from)
+    if (dm) {
+      if (!DRIVERS[dm[1]]) fail(L(`o driver "${dm[1]}" ainda não é simulado no adjeltron (simulados: ${Object.keys(DRIVERS).join(', ')})`, `the driver "${dm[1]}" is not simulated in adjeltron yet (simulated: ${Object.keys(DRIVERS).join(', ')})`), s.line)
+      if (!s.def || s.names.length) fail(L(`importe o driver com um nome: import ${dm[1]} from "mcu/drivers/${dm[1]}"`, `import the driver with a name: import ${dm[1]} from "mcu/drivers/${dm[1]}"`), s.line)
+      drv[s.def] = dm[1]
+      continue
+    }
+    if (s.from !== 'mcu') fail(L(`o módulo "${s.from}" não existe no Fogu das placas — importe a biblioteca (import mcu from "mcu") e os drivers dela (import dht from "mcu/drivers/dht")`, `the module "${s.from}" does not exist in Fogu for boards — import the library (import mcu from "mcu") and its drivers (import dht from "mcu/drivers/dht")`), s.line)
     if (s.def) mcuName = s.def
     for (const n of s.names) imported[n] = n
   }
@@ -600,6 +652,23 @@ export function foguToCpp(src, { board = 'arduino' } = {}) {
 
   // ---------- handlers ----------
   const handlers = []
+  // handlers da rede: (req) => … / (msg) => …, ou uma fn de topo com esse parâmetro anotado
+  const PNAME = { req: 'request', msg: 'message' }
+  const netHandlerId = (h, line, ptype) => {
+    if (h?.k === 'arrow') {
+      if (h.params.length > 1) fail(L(`este handler recebe um só parâmetro: (${ptype === 'req' ? 'req' : 'msg'}) => { … }`, `this handler takes a single parameter: (${ptype === 'req' ? 'req' : 'msg'}) => { … }`), line)
+      if (h._id == null) h._id = handlers.push({ name: `__fg_h${handlers.length}`, node: h, ptype, pname: h.params[0]?.name || null }) - 1
+      return h._id
+    }
+    if (h?.k === 'id' && fns[h.n] && !lookup(h.n)) {
+      const f = fns[h.n]
+      if (f.params.length !== 1 || f.params[0] !== ptype) fail(L(`o handler ${h.n} recebe um parâmetro: fn ${h.n}(x: ${PNAME[ptype]})`, `the handler ${h.n} takes one parameter: fn ${h.n}(x: ${PNAME[ptype]})`), line)
+      let i = handlers.findIndex((x) => x.name === h.n && x.ptype === ptype)
+      if (i < 0) i = handlers.push({ name: h.n, ptype }) - 1
+      return i
+    }
+    fail(L(`um handler da rede é (${ptype === 'req' ? 'req' : 'msg'}) => { … } ou o nome de uma fn de topo`, `a network handler is (${ptype === 'req' ? 'req' : 'msg'}) => { … } or the name of a top-level fn`), line)
+  }
   const handlerId = (h, line) => {
     if (h?.k === 'id' && fns[h.n] && !lookup(h.n)) {
       if (fns[h.n].params.length) fail(L(`o handler ${h.n} não pode ter parâmetros`, `the handler ${h.n} cannot have parameters`), line)
@@ -625,6 +694,7 @@ export function foguToCpp(src, { board = 'arduino' } = {}) {
     if (f.k === 'id' && imported[f.n] && !lookup(f.n) && !fns[f.n]) return imported[f.n]
     return null
   }
+  const opts0 = (e) => e.args.find((x) => x.k === 'map')
   const optOf = (m, key) => (m?.k === 'map' ? m.entries.find(([k]) => k === key)?.[1] : undefined)
   const M = () => mcuName || 'mcu'
 
@@ -638,6 +708,146 @@ export function foguToCpp(src, { board = 'arduino' } = {}) {
     if (c === 'button') return board_().BUTTON
     if (c === 'pin' && e.args[0]?.k === 'str') return board_().pinNum(e.args[0].v, e.line)
     return null
+  }
+
+  // ---------- tarefas (mcu.task / fg fn()), portas UART e armazenamento ----------
+  const tasks = [] // posição → nome da fn de topo que corre como tarefa
+  const uarts = [] // posição → { unit, tx, rx, baud, soft }
+  let usesStorage = false
+  const net = { used: false, serve: null, http: false, mqtt: false }
+  const needEsp = (c, line) => {
+    if (board_().fam !== 'esp32') fail(L(`${M()}.${c}() só existe nas placas ESP (a rede da mcu é a do ESP32)`, `${M()}.${c}() only exists on the ESP boards (the mcu's network is the ESP32's)`), line)
+    net.used = true
+  }
+  function taskSlot(arg, e) {
+    if (e._slot != null) return e._slot
+    if (arg?.k !== 'id' || !fns[arg.n] || lookup(arg.n)) fail(L('uma tarefa é uma fn de topo sem parâmetros: mcu.task(nome) ou fg nome()', 'a task is a top-level fn with no parameters: mcu.task(name) or fg name()'), e.line)
+    if (fns[arg.n].params.length) fail(L(`a tarefa ${arg.n} não pode ter parâmetros`, `the task ${arg.n} cannot have parameters`), e.line)
+    if (tasks.length >= (board_().avr ? 3 : 8)) fail(L(`no máximo ${board_().avr ? 3 : 8} tarefas nesta placa`, `at most ${board_().avr ? 3 : 8} tasks on this board`), e.line)
+    e._slot = tasks.push(arg.n) - 1
+    return e._slot
+  }
+  // mcu.uart(unidade?, { tx, rx, baud }): pinos fixos (como na mcu: verificados na compilação)
+  function uartSlot(e) {
+    if (e._uart != null) return e._uart
+    const { fam, pinNum } = board_()
+    const unitArg = e.args[0] && e.args[0].k !== 'map' ? e.args[0] : null
+    const opts = e.args.find((x) => x.k === 'map')
+    const unit = unitArg ? intConst(unitArg) : null
+    if (unitArg && unit == null) fail(L(`${M()}.uart(unidade, …): a unidade é um número fixo`, `${M()}.uart(unit, …): the unit is a fixed number`), e.line)
+    const pin = (k) => {
+      const v = optOf(opts, k)
+      if (v == null) return null
+      if (v.k !== 'str') fail(L(`${M()}.uart({ ${k}: "D3" }): o pino é um nome fixo`, `${M()}.uart({ ${k}: "D3" }): the pin is a fixed name`), e.line)
+      return pinNum(v.v, e.line)
+    }
+    let tx = pin('tx')
+    let rx = pin('rx')
+    if ((tx == null) !== (rx == null)) fail(L('mcu.uart: dê os dois pinos (tx e rx) ou nenhum', 'mcu.uart: give both pins (tx and rx) or neither'), e.line)
+    // omissões da tabela "UART beyond the console" da mcu
+    const DEF = fam === 'bluepill' ? [2, pinNum('PA2', e.line), pinNum('PA3', e.line)] : { uno: [null, 3, 2], nano: [null, 3, 2], esp32: [2, 17, 16], pico: [1, 8, 9] }[fam]
+    const u = unit ?? DEF[0]
+    if (tx == null) [tx, rx] = [DEF[1], DEF[2]]
+    if (fam === 'esp32' && u !== 1 && u !== 2) fail(L('no ESP32 as unidades de mcu.uart são 1 e 2', 'on the ESP32 the mcu.uart units are 1 and 2'), e.line)
+    if (fam === 'pico' && u !== 0 && u !== 1) fail(L('no Pico as unidades de mcu.uart são 0 (UART0) e 1 (UART1)', 'on the Pico the mcu.uart units are 0 (UART0) and 1 (UART1)'), e.line)
+    if (fam === 'bluepill' && u !== 2 && u !== 3) fail(L('no Blue Pill as unidades de mcu.uart são 2 (PA2/PA3) e 3 (PB10/PB11)', 'on the Blue Pill the mcu.uart units are 2 (PA2/PA3) and 3 (PB10/PB11)'), e.line)
+    const b = optOf(opts, 'baud')
+    const baud = b ? intConst(b) : 9600
+    if (baud == null) fail(L(`${M()}.uart({ baud: 9600 }): a velocidade é um número fixo`, `${M()}.uart({ baud: 9600 }): the baud rate is a fixed number`), e.line)
+    if (board_().avr && baud > 9600) fail(L('a UART por software do ATmega328P vai até 9600 baud (8N1)', "the ATmega328P's software UART goes up to 9600 baud (8N1)"), e.line)
+    if (uarts.length >= 2) fail(L('no máximo duas portas mcu.uart além da consola', 'at most two mcu.uart ports besides the console'), e.line)
+    e._uart = uarts.push({ unit: u, tx, rx, baud, soft: board_().avr }) - 1
+    return e._uart
+  }
+
+  // ---------- drivers (import dht from "mcu/drivers/dht") ----------
+  const constInts = {}
+  const constSpis = {}
+  const constPwms = {}
+  const drvTouched = new Set()
+  const isDrv = (e) => e?.k === 'id' && drv[e.n] != null && !lookup(e.n)
+  const drvCall = (e) => (e?.k === 'call' && e.f.k === 'mem' && isDrv(e.f.o) ? { mod: drv[e.f.o.n], fn: e.f.n, alias: e.f.o.n } : null)
+  // valor fixo (na compilação) de um int ou bool: literal, const, constante de um driver
+  function intConst(e) {
+    if (!e) return null
+    if (e.k === 'num' && !e.isFloat) return e.v
+    if (e.k === 'bool') return e.v
+    if (e.k === 'paren') return intConst(e.e)
+    if (e.k === 'un' && e.op === '-') {
+      const v = intConst(e.e)
+      return v == null ? null : -v
+    }
+    if (e.k === 'id' && constInts[e.n] != null && lookup(e.n)?.kind === 'const') return constInts[e.n]
+    if (e.k === 'mem' && isDrv(e.o)) return DRIVERS[drv[e.o.n]].consts[e.n] ?? null
+    return null
+  }
+  // pinos de um mcu.spi({ cs: "D10", sck?, mosi?, miso? }) fixo (ou de uma const com ele):
+  // { cs, sck, mosi, miso }; os que não forem dados são os do SPI da placa
+  function spiConst(e) {
+    if (!e) return null
+    if (e.k === 'paren') return spiConst(e.e)
+    if (e.k === 'id' && constSpis[e.n] != null && lookup(e.n)?.kind === 'const') return constSpis[e.n]
+    if (mcuCall(e) === 'spi') {
+      const cs = optOf(e.args[0], 'cs')
+      if (cs?.k !== 'str') return null
+      const def = spiPins(board_().fam)
+      const pinOpt = (k) => {
+        const v = optOf(e.args[0], k)
+        if (v == null) return def[k]
+        if (v.k !== 'str') fail(L(`${M()}.spi({ ${k}: "D11" }): o pino é um nome fixo`, `${M()}.spi({ ${k}: "D11" }): the pin is a fixed name`), e.line)
+        return board_().pinNum(v.v, e.line)
+      }
+      return { cs: board_().pinNum(cs.v, e.line), sck: pinOpt('sck'), mosi: pinOpt('mosi'), miso: pinOpt('miso') }
+    }
+    return null
+  }
+  // pino e frequência de um mcu.pwm(…) fixo (para verificar os servos)
+  function pwmConst(e) {
+    if (!e) return null
+    if (e.k === 'paren') return pwmConst(e.e)
+    if (e.k === 'id' && constPwms[e.n] && lookup(e.n)?.kind === 'const') return constPwms[e.n]
+    if (mcuCall(e) === 'pwm') {
+      const pin = e.args[0]?.k === 'str' ? board_().pinNum(e.args[0].v, e.line) : pinConst(e.args[0])
+      const f = optOf(e.args[1], 'freq')
+      return { pin, freq: f ? intConst(f) : 1000 }
+    }
+    return null
+  }
+  const TYPE_HINT = { pin: L('mcu.pin("D4") ou uma const com ele', 'mcu.pin("D4") or a const holding it'), spi: L('mcu.spi({ cs: "D10" }) ou uma const com ele', 'mcu.spi({ cs: "D10" }) or a const holding it'), int: L('um número ou uma const', 'a number or a const'), bool: 'true / false' }
+  function drvType({ mod, fn, alias }, e) {
+    const D = DRIVERS[mod]
+    const f = D.fns[fn]
+    if (!f) {
+      if (D.other?.includes(fn)) fail(L(`${alias}.${fn}() existe no driver ${mod} mas ainda não é simulado no adjeltron`, `${alias}.${fn}() exists in the ${mod} driver but is not simulated in adjeltron yet`), e.line)
+      fail(L(`o driver ${mod} não tem ${fn}() (tem: ${Object.keys(D.fns).join(', ')})`, `the ${mod} driver has no ${fn}() (it has: ${Object.keys(D.fns).join(', ')})`), e.line)
+    }
+    if (e.args.length !== f.p.length) fail(L(`${alias}.${fn}() precisa de ${f.p.length} argumento(s), não ${e.args.length}`, `${alias}.${fn}() needs ${f.p.length} argument(s), not ${e.args.length}`), e.line)
+    e.args.forEach((a, i) => {
+      const t = typeOf(a)
+      if (t !== f.p[i]) fail(L(`o argumento ${i + 1} de ${alias}.${fn}() é ${f.p[i]}, não ${t}`, `argument ${i + 1} of ${alias}.${fn}() is ${f.p[i]}, not ${t}`), e.line)
+    })
+    drvTouched.add(mod)
+    if (mod === 'servo' && f.p[0] === 'pwm') {
+      const w = pwmConst(e.args[0])
+      if (w?.freq != null && w.freq !== 50) fail(L(`o PWM de um servo tem de ser de 50 Hz: mcu.pwm(…, { freq: 50 }) (este tem ${w.freq} Hz)`, `a servo's PWM must be 50 Hz: mcu.pwm(…, { freq: 50 }) (this one is ${w.freq} Hz)`), e.line)
+      if (w?.pin != null && board_().avr && ![9, 10].includes(w.pin)) fail(L(`no ${board_().prof.mcu} só D9 e D10 (Timer1) fazem os 50 Hz de um servo (D3/D11 dão 61 Hz; D5/D6 1 kHz)`, `on the ${board_().prof.mcu} only D9 and D10 (Timer1) can make a servo's 50 Hz (D3/D11 give 61 Hz; D5/D6 1 kHz)`), e.line)
+    }
+    if (f.cfg) {
+      const cfg = f.p.map((t, i) => (t === 'i2c' ? null : t === 'pin' ? pinConst(e.args[i]) : t === 'spi' ? spiConst(e.args[i]) : intConst(e.args[i])))
+      const bad = cfg.findIndex((v, i) => v == null && f.p[i] !== 'i2c')
+      if (bad >= 0) fail(L(`o argumento ${bad + 1} de ${alias}.${fn}() tem de ser fixo (${TYPE_HINT[f.p[bad]] || TYPE_HINT.int}): no simulador o dispositivo é escolhido na compilação`, `argument ${bad + 1} of ${alias}.${fn}() must be fixed (${TYPE_HINT[f.p[bad]] || TYPE_HINT.int}): in the simulator the device is chosen at compile time`), e.line)
+      const key = JSON.stringify([fn, cfg])
+      const u = drvUsed[mod]
+      if (u && u.key !== key) fail(L(`${alias}.${u.fn}() já escolheu outro dispositivo na linha ${u.line}: no simulador cada driver serve um só dispositivo`, `${alias}.${u.fn}() already chose another device on line ${u.line}: in the simulator each driver serves a single device`), e.line)
+      drvUsed[mod] = { key, cfg: cfg.map((v) => (typeof v === 'boolean' ? v : v)), fn, line: e.line }
+    }
+    return f.r
+  }
+  function drvE({ mod, fn }, e) {
+    const f = DRIVERS[mod].fns[fn]
+    if (f.cfg) return `__d_${mod}_${fn}()`
+    const a = e.args.map((x, i) => (f.p[i] === 'pin' || f.p[i] === 'pwm' ? `${E(x)}.n` : f.p[i] === 'spi' ? `${E(x)}.cs` : f.p[i] === 'i2c' ? null : E(x)))
+    return `__d_${mod}_${fn}(${a.filter((x) => x != null).join(', ')})`
   }
 
   // ---------- tipos ----------
@@ -731,6 +941,10 @@ export function foguToCpp(src, { board = 'arduino' } = {}) {
         break
       }
       case 'mem': {
+        if (isDrv(e.o)) {
+          if (DRIVERS[drv[e.o.n]].consts[e.n] != null) return 'int'
+          fail(L(`${e.o.n}.${e.n} não existe (constantes: ${Object.keys(DRIVERS[drv[e.o.n]].consts).join(', ') || '—'}); as funções chamam-se com ${e.o.n}.f(…)`, `${e.o.n}.${e.n} does not exist (constants: ${Object.keys(DRIVERS[drv[e.o.n]].consts).join(', ') || '—'}); functions are called as ${e.o.n}.f(…)`), e.line)
+        }
         if (isMcu(e.o)) fail(L(`${mcuName}.${e.n} é uma função: ${mcuName}.${e.n}(…)`, `${mcuName}.${e.n} is a function: ${mcuName}.${e.n}(…)`), e.line)
         if (e.o.k === 'mem' && isMcu(e.o.o)) fail(`${mcuName}.${e.o.n}.${e.n}(…)`, e.line)
         fail(L(`.${e.n} sem parênteses: os valores só têm métodos (ex.: b.len())`, `.${e.n} without parentheses: values only have methods (e.g. b.len())`), e.line)
@@ -738,6 +952,9 @@ export function foguToCpp(src, { board = 'arduino' } = {}) {
       }
       case 'call':
         return callType(e)
+      case 'fgcall':
+        taskSlot({ k: 'id', n: e.name }, e)
+        return 'task'
     }
     fail(L(`expressão não suportada (${e.k})`, `unsupported expression (${e.k})`), e.line)
   }
@@ -745,6 +962,8 @@ export function foguToCpp(src, { board = 'arduino' } = {}) {
   function callType(e) {
     const c = mcuCall(e)
     if (c != null) return mcuType(c, e)
+    const dc = drvCall(e)
+    if (dc) return drvType(dc, e)
     if (e.f.k === 'id') {
       const n = e.f.n
       const f = fns[n]
@@ -789,10 +1008,13 @@ export function foguToCpp(src, { board = 'arduino' } = {}) {
       const o = typeOf(e.f.o)
       const m = METHODS[o]?.[e.f.n]
       if (!m) fail(L(`${o} não tem o método ${e.f.n}()${METHODS[o] ? ` (tem: ${Object.keys(METHODS[o]).join(', ')})` : ''}`, `${o} has no method ${e.f.n}()${METHODS[o] ? ` (it has: ${Object.keys(METHODS[o]).join(', ')})` : ''}`), e.line)
+      if (o === 'str' && e.f.n === 'code' && e.args.length) fail(L('s.code() não recebe argumentos: é o código do 1.º carácter (para o carácter i: s.slice(i, i + 1).code())', 's.code() takes no arguments: it is the code of the first character (for character i: s.slice(i, i + 1).code())'), e.line)
       if (o === 'pin' && e.f.n === 'inputPullDown' && board_().avr) fail(L('o ATmega328P não tem pull-downs internos: use inputPullUp() e um botão ao GND', 'the ATmega328P has no internal pull-downs: use inputPullUp() and a button to GND'), e.line)
       for (const a of e.args) if (a.k === 'arrow' || a.k === 'map' || (a.k === 'id' && fns[a.n] && !lookup(a.n))) continue
       else typeOf(a)
-      if (o === 'pin' && /^on/.test(e.f.n)) handlerId(e.args.find((a) => a.k === 'arrow' || (a.k === 'id' && fns[a.n])), e.line)
+      if (o === 'pin' && /^on[A-Z]/.test(e.f.n)) handlerId(e.args.find((a) => a.k === 'arrow' || (a.k === 'id' && fns[a.n])), e.line)
+      if (o === 'mqtt' && e.f.n === 'subscribe') netHandlerId(e.args[1], e.line, 'msg')
+      if (o === 'uart' && e.f.n === 'onReceive') handlerId(e.args.find((a) => a.k === 'arrow' || (a.k === 'id' && fns[a.n])), e.line)
       return m
     }
     fail(L('chamada não suportada', 'unsupported call'), e.line)
@@ -847,10 +1069,22 @@ export function foguToCpp(src, { board = 'arduino' } = {}) {
         if (n != null && !board_().adcPins.includes(n)) fail(L(`${board_().nameOf(n)} não tem ADC no ${board_().prof.mcu} (pinos com ADC: ${board_().adcList})`, `${board_().nameOf(n)} has no ADC on the ${board_().prof.mcu} (ADC pins: ${board_().adcList})`), e.line)
         return 'adc'
       }
+      case 'spi': {
+        const cs = optOf(A(0), 'cs')
+        if (cs?.k !== 'str') fail(L(`${M()}.spi({ cs: "D10" }): no simulador o chip select é um nome de pino fixo`, `${M()}.spi({ cs: "D10" }): in the simulator the chip select is a fixed pin name`), e.line)
+        board_().pinNum(cs.v, e.line)
+        return 'spi'
+      }
       case 'pwm': {
-        if (T(0) !== 'pin') fail(L(`${M()}.pwm(pino, { freq: 1000 })`, `${M()}.pwm(pin, { freq: 1000 })`), e.line)
-        const n = pinConst(A(0))
+        if (A(0)?.k !== 'str' && T(0) !== 'pin') fail(L(`${M()}.pwm(pino, { freq: 1000 })`, `${M()}.pwm(pin, { freq: 1000 })`), e.line)
+        const n = A(0)?.k === 'str' ? board_().pinNum(A(0).v, e.line) : pinConst(A(0))
         if (n != null && !board_().pwmOk(n)) fail(L(`${board_().nameOf(n)} não tem PWM no ${board_().prof.mcu} (pinos PWM: ${board_().pwmList})`, `${board_().nameOf(n)} has no PWM on the ${board_().prof.mcu} (PWM pins: ${board_().pwmList})`), e.line)
+        // D5 é o 2.º canal do Timer0, que faz o relógio de 1 ms: só 1 kHz (como na mcu real)
+        if (n === 5 && board_().avr) {
+          const fq = optOf(A(1), 'freq')
+          const v = fq ? (fq.k === 'num' ? fq.v : null) : 1000
+          if (v != null && v !== 1000) fail(L(`no ${board_().prof.mcu} o D5 só faz PWM a 1 kHz (o Timer0 é o relógio): use { freq: 1000 } ou D3/D9/D10/D11`, `on the ${board_().prof.mcu} D5 only does PWM at 1 kHz (Timer0 is the clock): use { freq: 1000 } or D3/D9/D10/D11`), e.line)
+        }
         return 'pwm'
       }
       case 'i2c':
@@ -878,6 +1112,144 @@ export function foguToCpp(src, { board = 'arduino' } = {}) {
       case 'serial.onReceive':
         handlerId(A(0), e.line)
         return 'void'
+      // ---------- temporizadores, tarefas e partilha entre elas ----------
+      case 'timer': {
+        const t0 = T(0)
+        if (t0 !== 'dur' && t0 !== 'int') fail(L(`${M()}.timer(1ms ou µs, handler, { oneShot, immediate })`, `${M()}.timer(1ms or µs, handler, { oneShot, immediate })`), e.line)
+        handlerId(A(1), e.line)
+        return 'timer'
+      }
+      case 'channel': {
+        if (T(0) !== 'int') fail(`${M()}.channel(capacidade, "int" | "str")`, e.line)
+        const k = A(1)?.k === 'str' ? A(1).v : 'int'
+        if (k === 'bytes') fail(L('um canal de bytes ainda não é simulado no adjeltron (use "int" ou "str")', 'a bytes channel is not simulated in adjeltron yet (use "int" or "str")'), e.line)
+        if (k !== 'int' && k !== 'str') fail(`${M()}.channel(capacidade, "int" | "str" | "bytes")`, e.line)
+        return k === 'str' ? 'chanS' : 'chanI'
+      }
+      case 'isrQueue':
+        if (T(0) !== 'int') fail(`${M()}.isrQueue(capacidade)`, e.line)
+        return 'chanI'
+      case 'atomic':
+        if (A(0) && T(0) !== 'int') fail(`${M()}.atomic(int)`, e.line)
+        return 'atomic'
+      case 'mutex':
+        return 'mutex'
+      case 'task':
+        taskSlot(A(0), e)
+        return 'task'
+      case 'spawn':
+        taskSlot(A(0), e)
+        return 'bool'
+      case 'handled':
+      case 'missed':
+        handlerId(A(0), e.line)
+        return 'int'
+      case 'cores':
+      case 'coreId':
+      case 'tasks':
+      case 'cpuMain':
+        return 'int'
+      case 'taskInfo':
+        if (T(0) !== 'int') fail(`${M()}.taskInfo(i)`, e.line)
+        return 'str'
+      case 'coreRunning':
+      case 'tasksSupported':
+      case 'inInterrupt':
+        return 'bool'
+      case 'critical':
+        handlerId(A(0), e.line)
+        return 'void'
+      case 'interrupts':
+        if (T(0) !== 'bool') fail(`${M()}.interrupts(true | false)`, e.line)
+        return 'void'
+      // ---------- rede (ESP32) ----------
+      case 'wifi.connect':
+        needEsp(c, e.line)
+        if (T(0) !== 'str' || T(1) !== 'str') fail(`${M()}.wifi.connect("rede", "palavra-passe", { timeout: 15s })`, e.line)
+        return 'bool'
+      case 'wifi.accessPoint':
+        needEsp(c, e.line)
+        if (T(0) !== 'str' || T(1) !== 'str') fail(`${M()}.wifi.accessPoint("nome", "palavra-passe")`, e.line)
+        return 'bool'
+      case 'wifi.connected':
+        needEsp(c, e.line)
+        return 'bool'
+      case 'wifi.ip':
+      case 'wifi.mac':
+      case 'wifi.apMac':
+      case 'wifi.apIp':
+      case 'wifi.error':
+        needEsp(c, e.line)
+        return 'str'
+      case 'wifi.rssi':
+      case 'wifi.scan':
+        needEsp(c, e.line)
+        return 'int'
+      case 'wifi.scanSsid':
+        needEsp(c, e.line)
+        if (T(0) !== 'int') fail(`${M()}.wifi.scanSsid(i)`, e.line)
+        return 'str'
+      case 'wifi.scanRssi':
+        needEsp(c, e.line)
+        if (T(0) !== 'int') fail(`${M()}.wifi.scanRssi(i)`, e.line)
+        return 'int'
+      case 'wifi.disconnect':
+        needEsp(c, e.line)
+        return 'void'
+      case 'http.serve': {
+        needEsp(c, e.line)
+        const port = intConst(A(0))
+        if (port == null) fail(L(`${M()}.http.serve(80, (req) => { … }): a porta é um número fixo`, `${M()}.http.serve(80, (req) => { … }): the port is a fixed number`), e.line)
+        if (net.serve != null && net.serve !== port) fail(L('um só servidor HTTP por programa no simulador', 'a single HTTP server per program in the simulator'), e.line)
+        net.serve = port
+        netHandlerId(A(1), e.line, 'req')
+        return 'void'
+      }
+      case 'http.get':
+      case 'http.post':
+        needEsp(c, e.line)
+        if (T(0) !== 'str') fail(`${M()}.${c}("http://…")`, e.line)
+        e.args.slice(1).forEach((x) => x.k !== 'map' && typeOf(x))
+        net.http = true
+        return 'resp'
+      case 'mqtt.connect':
+        needEsp(c, e.line)
+        if (T(0) !== 'str') fail(`${M()}.mqtt.connect("mqtt://servidor:1883", { clientId })`, e.line)
+        net.mqtt = true
+        return 'mqtt'
+      // ---------- porta série extra ----------
+      case 'uart':
+        uartSlot(e)
+        return 'uart'
+      // ---------- armazenamento (EEPROM / flash) ----------
+      case 'storage.set':
+        if (T(0) !== 'str') fail(`${M()}.storage.set("chave", valor…)`, e.line)
+        e.args.slice(1).forEach((x) => typeOf(x))
+        usesStorage = true
+        return 'bool'
+      case 'storage.get':
+      case 'storage.has':
+      case 'storage.remove':
+        if (T(0) !== 'str') fail(`${M()}.${c}("chave")`, e.line)
+        usesStorage = true
+        return c === 'storage.get' ? 'str' : 'bool'
+      case 'storage.getInt':
+        if (T(0) !== 'str' || T(1) !== 'int') fail(`${M()}.storage.getInt("chave", omissão)`, e.line)
+        usesStorage = true
+        return 'int'
+      case 'storage.keys':
+        usesStorage = true
+        return 'int'
+      case 'storage.key':
+        if (T(0) !== 'int') fail(`${M()}.storage.key(i)`, e.line)
+        usesStorage = true
+        return 'str'
+      case 'storage.clear':
+        usesStorage = true
+        return 'bool'
+      case 'storage.error':
+        usesStorage = true
+        return 'str'
     }
     fail(L(`${M()}.${c}() não existe na biblioteca mcu`, `${M()}.${c}() does not exist in the mcu library`), e.line)
   }
@@ -974,7 +1346,7 @@ export function foguToCpp(src, { board = 'arduino' } = {}) {
       case 'paren':
         return `(${E(e.e)})`
       case 'id':
-        return e.n
+        return nm(e.n)
       case 'list':
         return `__fg_b(${e.items.length}${e.items.map((x) => `, ${E(x)}`).join('')})`
       case 'un':
@@ -989,6 +1361,11 @@ export function foguToCpp(src, { board = 'arduino' } = {}) {
         return typeOf(e.o) === 'str' ? `String(${E(e.o)}.charAt(${E(e.i)}))` : `${E(e.o)}.at(${E(e.i)})`
       case 'call':
         return callE(e)
+      case 'mem':
+        if (isDrv(e.o)) return String(DRIVERS[drv[e.o.n]].consts[e.n])
+        break
+      case 'fgcall':
+        return `__fg_taskStart(${taskSlot({ k: 'id', n: e.name }, e)})`
     }
     fail(L(`expressão não suportada (${e.k})`, `unsupported expression (${e.k})`), e.line)
   }
@@ -996,10 +1373,12 @@ export function foguToCpp(src, { board = 'arduino' } = {}) {
   function callE(e) {
     const c = mcuCall(e)
     if (c != null) return mcuE(c, e)
+    const dc = drvCall(e)
+    if (dc) return drvE(dc, e)
     const a = e.args.map((x) => (x.k === 'arrow' || x.k === 'map' || (x.k === 'id' && fns[x.n] && !lookup(x.n)) ? null : E(x)))
     if (e.f.k === 'id') {
       const n = e.f.n
-      if (fns[n] && !lookup(n)) return `${n}(${a.join(', ')})`
+      if (fns[n] && !lookup(n)) return `${nm(n)}(${a.join(', ')})`
       switch (n) {
         case 'str':
           return asText(e.args[0])
@@ -1032,7 +1411,21 @@ export function foguToCpp(src, { board = 'arduino' } = {}) {
           const v = optOf(opts, 'debounce')
           return v ? (v.k === 'bool' ? (v.v ? 20 : 0) : v.k === 'dur' ? v.ms : d) : d
         }
+        // { immediate: true }: o handler corre dentro da interrupção (attachInterrupt)
+        const imm = optOf(opts, 'immediate')
+        if (imm?.k === 'bool' && imm.v && ['onEdge', 'onChange', 'onInterrupt'].includes(m)) {
+          const mode = e.args[0]?.k === 'str' ? e.args[0].v : 'change'
+          const k = m === 'onChange' ? 4 : { rising: 2, falling: 3, both: 4, change: 4, low: 7, high: 8 }[mode]
+          if (k == null) fail(`${m}("rising" | "falling" | "change" | "low" | "high", handler, { immediate: true })`, e.line)
+          return `__fg_onImm(${o}.n, ${k}, ${h()})`
+        }
         switch (m) {
+          case 'detachInterrupt':
+            return `__fg_detach(${o}.n)`
+          case 'off':
+            return `__fg_mask(${o}.n, true)`
+          case 'on':
+            return `__fg_mask(${o}.n, false)`
           case 'onPress':
             return `__fg_on(${o}.n, 0, ${h()}, 30)`
           case 'onRelease':
@@ -1063,6 +1456,31 @@ export function foguToCpp(src, { board = 'arduino' } = {}) {
         }
         return `${o}.${m}(${a.filter((x) => x != null).join(', ')})`
       }
+      if (t === 'uart') {
+        switch (m) {
+          case 'print':
+          case 'write':
+            return `${o}.${m}(${e.args.length ? e.args.map(asText).join(' + String(" ") + ') : 'String("")'})`
+          case 'readLine':
+            return `${o}.readLine(${e.args[0] ? a[0] : '1000L'})`
+          case 'onReceive':
+            return `${o}.onReceive(${handlerId(e.args.find((x) => x.k === 'arrow' || (x.k === 'id' && fns[x.n])), e.line)})`
+        }
+      }
+      if (t === 'req' && ['html', 'text', 'json', 'send'].includes(m)) {
+        const st = optOf(opts0(e), 'status')
+        const ty = optOf(opts0(e), 'type')
+        const TYPE = { html: 'text/html', send: 'text/html', text: 'text/plain', json: 'application/json' }[m]
+        const body = e.args.filter((x) => x.k !== 'map').map(asText)
+        return `${o}.reply(${st ? E(st) : '200L'}, ${ty ? E(ty) : `String("${TYPE}")`}, ${body.length ? body.join(' + ') : 'String("")'})`
+      }
+      if (t === 'mqtt' && m === 'publish') {
+        const rt = optOf(opts0(e), 'retain')
+        const body = e.args.slice(1).filter((x) => x.k !== 'map').map(asText)
+        return `${o}.publish(${a[0]}, ${body.length ? body.join(' + ') : 'String("")'}, ${rt ? E(rt) : 'false'})`
+      }
+      if (t === 'mqtt' && m === 'subscribe') return `${o}.subscribe(${a[0]}, ${netHandlerId(e.args[1], e.line, 'msg')})`
+      if (t === 'timer' && m === 'setPeriod' && e.args[0] && typeOf(e.args[0]) === 'dur') return `${o}.setPeriod((${a[0]}) * 1000L)`
       if (t === 'adc' && /^on/.test(m)) fail(L(`adc.${m}() ainda não é simulado no adjeltron (leia adc.read() no ciclo)`, `adc.${m}() is not simulated in adjeltron yet (read adc.read() in the loop)`), e.line)
       if (t === 'str') {
         switch (m) {
@@ -1141,8 +1559,11 @@ export function foguToCpp(src, { board = 'arduino' } = {}) {
       }
       case 'pwm': {
         const f = optOf(opts, 'freq')
-        return `FgPwm(${E(e.args[0])}.n, ${f ? E(f) : 1000})`
+        const pin = e.args[0]?.k === 'str' ? board_().pinNum(e.args[0].v, e.line) : `${E(e.args[0])}.n`
+        return `FgPwm(${pin}, ${f ? E(f) : 1000})`
       }
+      case 'spi':
+        return `FgSpi(${board_().pinNum(optOf(opts, 'cs').v, e.line)})`
       case 'i2c': {
         const f = optOf(opts, 'freq')
         return `FgI2c(${f ? E(f) : 100000})`
@@ -1167,6 +1588,110 @@ export function foguToCpp(src, { board = 'arduino' } = {}) {
         return '__fg_readBytes()'
       case 'serial.onReceive':
         return `__fg_onSerial(${handlerId(e.args[0], e.line)})`
+      case 'timer': {
+        const one = optOf(opts, 'oneShot')
+        const us = typeOf(e.args[0]) === 'dur' ? `(${a[0]}) * 1000L` : a[0]
+        return `__fg_timer(${us}, ${handlerId(e.args[1], e.line)}, ${one ? E(one) : 'false'})`
+      }
+      case 'channel':
+        return `${typeOf(e) === 'chanS' ? 'FgChanS' : 'FgChanI'}(${a[0]})`
+      case 'isrQueue':
+        return `FgChanI(${a[0]})`
+      case 'atomic':
+        return `FgAtomic(${a[0] ?? 0})`
+      case 'mutex':
+        return 'FgMutex()'
+      case 'task':
+        return `__fg_taskStart(${e._slot})`
+      case 'spawn':
+        // o 2.º núcleo: só o ESP32 e o RP2040 o têm (nos outros spawn devolve false)
+        return ['esp32', 'pico'].includes(board_().fam) ? `(__fg_taskStart(${e._slot}).id >= 0)` : 'false'
+      case 'handled':
+        return `__fg_hN[${handlerId(e.args[0], e.line)}]`
+      case 'missed':
+        return '0L'
+      case 'cores':
+        return ['esp32', 'pico'].includes(board_().fam) ? '2L' : '1L'
+      case 'coreId':
+        return '0L'
+      case 'tasks':
+        return tasks.length ? '__fg_taskCount()' : '0L'
+      case 'cpuMain':
+        return '-1L'
+      case 'taskInfo':
+        return tasks.length ? `__fg_taskInfo(${a[0]})` : 'String("")'
+      case 'coreRunning':
+        return 'false'
+      case 'tasksSupported':
+        return 'true'
+      case 'inInterrupt':
+        return 'false'
+      case 'critical':
+        return `__fg_run(${handlerId(e.args[0], e.line)})`
+      case 'interrupts':
+        return `__fg_interrupts(${a[0]})`
+      case 'uart':
+        return `FgUart(${e._uart})`
+      case 'wifi.connect': {
+        const to = optOf(opts, 'timeout')
+        return `__fg_wifiConnect(${a[0]}, ${a[1]}, ${to ? E(to) : '15000L'})`
+      }
+      case 'wifi.accessPoint':
+        return `__fg_wifiAp(${a[0]}, ${a[1]})`
+      case 'wifi.connected':
+        return '__fg_wifiConnected()'
+      case 'wifi.ip':
+        return '__fg_wifiIp()'
+      case 'wifi.mac':
+        return 'WiFi.macAddress()'
+      case 'wifi.apMac':
+        return 'WiFi.softAPmacAddress()'
+      case 'wifi.apIp':
+        return 'WiFi.softAPIP().toString()'
+      case 'wifi.error':
+        return '__fg_wifiErr'
+      case 'wifi.rssi':
+        return '((long)WiFi.RSSI())'
+      case 'wifi.scan':
+        return '__fg_wifiScan()'
+      case 'wifi.scanSsid':
+        return `WiFi.SSID(${a[0]})`
+      case 'wifi.scanRssi':
+        return `((long)WiFi.RSSI(${a[0]}))`
+      case 'wifi.disconnect':
+        return 'WiFi.disconnect()'
+      case 'http.serve':
+        return `__fg_httpServe(${netHandlerId(e.args[1], e.line, 'req')})`
+      case 'http.get':
+      case 'http.post': {
+        const to = optOf(opts, 'timeout')
+        const ty = optOf(opts, 'type')
+        const body = e.args.slice(1).filter((x) => x.k !== 'map').map(asText)
+        return `__fg_httpReqC(${a[0]}, ${ty ? E(ty) : 'String("text/plain")'}, ${body.length ? body.join(' + ') : 'String("")'}, ${c === 'http.post'}, ${to ? E(to) : '5000L'})`
+      }
+      case 'mqtt.connect': {
+        const o = (k, d) => (optOf(opts, k) ? E(optOf(opts, k)) : d)
+        const ka = optOf(opts, 'keepAlive')
+        return `__fg_mqttConnect(${a[0]}, ${o('clientId', 'String("fogu-esp32")')}, ${o('username', 'String("")')}, ${o('password', 'String("")')}, ${ka ? (typeOf(ka) === 'dur' ? `(${E(ka)}) / 1000L` : E(ka)) : '60L'})`
+      }
+      case 'storage.set':
+        return `__fg_stSet(${a[0]}, ${e.args.length > 1 ? e.args.slice(1).map(asText).join(' + String(" ") + ') : 'String("")'})`
+      case 'storage.get':
+        return `__fg_stGet(${a[0]})`
+      case 'storage.has':
+        return `__fg_stHas(${a[0]})`
+      case 'storage.remove':
+        return `__fg_stRemove(${a[0]})`
+      case 'storage.getInt':
+        return `__fg_stGetInt(${a[0]}, ${a[1]})`
+      case 'storage.keys':
+        return '__fg_stKeys()'
+      case 'storage.key':
+        return `__fg_stKey(${a[0]})`
+      case 'storage.clear':
+        return '__fg_stClear()'
+      case 'storage.error':
+        return '__fg_stErr'
     }
     fail(L(`${M()}.${c}() não existe`, `${M()}.${c}() does not exist`), e.line)
   }
@@ -1188,10 +1713,10 @@ export function foguToCpp(src, { board = 'arduino' } = {}) {
     switch (s.k) {
       case 'var': {
         visitVar(s)
-        let init = s.init ? E(s.init) : { int: '0', bool: 'false', dur: '0', str: 'String("")', bytes: 'FgBytes()', pin: 'FgPin()', adc: 'FgAdc()', pwm: 'FgPwm()', i2c: 'FgI2c()' }[s.t]
+        let init = s.init ? E(s.init) : { int: '0', bool: 'false', dur: '0', str: 'String("")', bytes: 'FgBytes()', pin: 'FgPin()', adc: 'FgAdc()', pwm: 'FgPwm()', i2c: 'FgI2c()', spi: 'FgSpi()', timer: 'FgTimer()', uart: 'FgUart()', chanI: 'FgChanI()', chanS: 'FgChanS()', atomic: 'FgAtomic()', mutex: 'FgMutex()', task: 'FgTask()', req: 'FgReq()', resp: 'FgResp()', mqtt: 'FgMqtt()', msg: 'FgMsg()' }[s.t]
         if (s.sized && s.sized[1] != null) init = `__fg_range(${init}, ${s.sized[1]}, ${s.sized[2]}, ${s.line})`
-        if (s.top) return `${ind(d)}${s.name} = ${init};` // global: declarada lá em cima
-        return `${ind(d)}${CT[s.t]} ${s.name} = ${init};`
+        if (s.top) return `${ind(d)}${nm(s.name)} = ${init};` // global: declarada lá em cima
+        return `${ind(d)}${CT[s.t]} ${nm(s.name)} = ${init};`
       }
       case 'assign': {
         const tt = typeOf(s.target)
@@ -1235,11 +1760,11 @@ export function foguToCpp(src, { board = 'arduino' } = {}) {
         forDecl(s)
         let head
         let pre = ''
-        if (s.kind_ === 'range') head = `for (long ${s.a} = ${E(s.iter.a)}; ${s.a} < ${E(s.iter.b)}; ${s.a}++)`
+        if (s.kind_ === 'range') head = `for (long ${nm(s.a)} = ${E(s.iter.a)}; ${nm(s.a)} < ${E(s.iter.b)}; ${nm(s.a)}++)`
         else {
           const v = `__it${d}`
-          const i = s.b ? s.a : `__i${d}`
-          const x = s.b || s.a
+          const i = s.b ? nm(s.a) : `__i${d}`
+          const x = nm(s.b || s.a)
           if (s.kind_ === 'bytes') {
             head = `FgBytes ${v} = ${E(s.iter)};\n${ind(d)}for (long ${i} = 0; ${i} < ${v}.len(); ${i}++)`
             pre = `${ind(d + 1)}long ${x} = ${v}.at(${i});\n`
@@ -1258,6 +1783,8 @@ export function foguToCpp(src, { board = 'arduino' } = {}) {
       case 'return':
         if (!curFn && !inHandler) fail(L('return fora de uma função', 'return outside a function'), s.line)
         return `${ind(d)}return${s.value ? ` ${E(s.value)}` : ''};`
+      case 'fg':
+        return `${ind(d)}__fg_taskStart(${taskSlot({ k: 'id', n: s.name }, s)});`
       case 'fn':
       case 'import':
         return ''
@@ -1278,9 +1805,23 @@ export function foguToCpp(src, { board = 'arduino' } = {}) {
   for (const s of globals) {
     visitVar(s)
     globalTypes = { ...scopes[0] }
-    if (s.t === 'pin' && s.kind === 'const') {
-      const n = pinConst(s.init)
-      if (n != null) constPins[s.name] = n
+    if (s.kind === 'const' && s.init) {
+      if (s.t === 'pin') {
+        const n = pinConst(s.init)
+        if (n != null) constPins[s.name] = n
+      }
+      if (s.t === 'int' || s.t === 'bool') {
+        const v = intConst(s.init)
+        if (v != null) constInts[s.name] = v
+      }
+      if (s.t === 'spi') {
+        const v = spiConst(s.init)
+        if (v != null) constSpis[s.name] = v
+      }
+      if (s.t === 'pwm') {
+        const v = pwmConst(s.init)
+        if (v) constPwms[s.name] = v
+      }
     }
   }
   globalTypes = { ...scopes[0] }
@@ -1288,7 +1829,7 @@ export function foguToCpp(src, { board = 'arduino' } = {}) {
   // ---------- funções ----------
   const fnNodes = prog.filter((x) => x.k === 'fn')
   for (const s of fnNodes) if (!fns[s.name].ret) inferRet(fns[s.name])
-  const sig = (s, f) => `${CT[f.ret]} ${s.name}(${s.params.map((p, i) => `${CT[f.params[i]]} ${p.name}`).join(', ')})`
+  const sig = (s, f) => `${CT[f.ret]} ${nm(s.name)}(${s.params.map((p, i) => `${CT[f.params[i]]} ${nm(p.name)}`).join(', ')})`
   const fnText = fnNodes.map((s) => {
     const f = fns[s.name]
     curFn = f
@@ -1310,26 +1851,64 @@ export function foguToCpp(src, { board = 'arduino' } = {}) {
     if (!h.node) continue
     scopes = [{ ...globalTypes }, {}]
     inHandler = true
-    hText.push(`void ${h.name}() {\n${blockS(h.node.body, 1, false)}\n}`)
+    if (h.ptype) {
+      // handler da rede: o parâmetro (req / msg) é o pedido ou a mensagem
+      const pn = h.pname || '__fg_p'
+      declare(pn, h.ptype, 'const', h.node.line)
+      hText.push(`void ${h.name}(${CT[h.ptype]} ${nm(pn)}) {\n${blockS(h.node.body, 1, false)}\n}`)
+    } else hText.push(`void ${h.name}() {\n${blockS(h.node.body, 1, false)}\n}`)
     inHandler = false
   }
-  const runText = `void __fg_run(long id) {\n  switch (id) {\n${handlers.map((h, i) => `    case ${i}: ${h.name}(); break;`).join('\n')}\n  }\n}`
+  const runText = `long __fg_hN[${Math.max(1, handlers.length)}];\nvoid __fg_run(long id) {\n  __fg_hN[id]++;\n  switch (id) {\n${handlers.map((h, i) => (h.ptype ? '' : `    case ${i}: ${h.node ? h.name : nm(h.name)}(); break;`)).filter(Boolean).join('\n')}\n  }\n}${['req', 'msg'].filter((pt) => handlers.some((h) => h.ptype === pt)).map((pt) => `\nvoid __fg_run${pt === 'req' ? 'Req' : 'Msg'}(long id, ${CT[pt]} x) {\n  __fg_hN[id]++;\n  switch (id) {\n${handlers.map((h, i) => (h.ptype === pt ? `    case ${i}: ${h.node ? h.name : nm(h.name)}(x); break;` : '')).filter(Boolean).join('\n')}\n  }\n}`).join('')}`
 
   const info = board_()
+  // ---------- drivers usados: #includes e o código de cada um ----------
+  const dctx = { fam: info.fam, spi: spiPins(info.fam) }
+  const dIncludes = []
+  const dCode = []
+  for (const mod of drvTouched) {
+    const D = DRIVERS[mod]
+    const hasBegin = Object.values(D.fns).some((f) => f.cfg)
+    if (hasBegin && !drvUsed[mod]) {
+      const alias = Object.keys(drv).find((k) => drv[k] === mod)
+      fail(L(`falta ${alias}.${Object.keys(D.fns).find((k) => D.fns[k].cfg)}(…): é o begin que escolhe o dispositivo (pinos / endereço)`, `${alias}.${Object.keys(D.fns).find((k) => D.fns[k].cfg)}(…) is missing: begin chooses the device (pins / address)`), 0)
+    }
+    for (const h of [...D.headers, ...(D.headersFor?.(dctx) || [])]) if (!dIncludes.includes(h)) dIncludes.push(h)
+    dCode.push(`// driver mcu/drivers/${mod}${D.cpp(drvUsed[mod]?.cfg || [], dctx)}`)
+  }
+  // ---------- rede (ESP32) ----------
+  if (net.used) {
+    for (const h of netHeaders(net)) if (!dIncludes.includes(h)) dIncludes.push(h)
+    dCode.push(netCpp(net))
+  } else dCode.push('void __fg_netPoll() {}')
+  // ---------- portas mcu.uart ----------
+  if (uarts.some((u) => u.soft)) dIncludes.push('SoftwareSerial.h')
+  dCode.push(uartCpp(uarts, info.fam))
+  // ---------- mcu.storage (EEPROM do AVR / flash emulada nos outros) ----------
+  if (usesStorage) {
+    dIncludes.push('EEPROM.h')
+    dCode.push(storageCpp(info.avr))
+  }
+  // ---------- tarefas: declarações (as definições vêm depois das funções do programa) ----------
+  if (tasks.length) dCode.push(TASK_DECL)
   return [
     `// Gerado a partir de Fogu (biblioteca mcu) pelo adjeltron — placa: ${DEFS[info.type]?.name || info.type}`,
     '#include <Wire.h>',
+    ...dIncludes.map((h) => `#include <${h}>`),
     // o AVR não tem pull-downs internos (o compilador do Fogu já recusa inputPullDown nele)
     info.avr ? RUNTIME.replace(/\n  FgPin inputPullDown\(\)[^\n]*/, '') : RUNTIME,
     '',
+    ...dCode,
+    '',
     '// variáveis globais do programa',
-    ...globals.map((s) => `${CT[s.t]} ${s.name};`),
+    ...globals.map((s) => `${CT[s.t]} ${nm(s.name)};`),
     '',
     ...fnNodes.map((s) => `${sig(s, fns[s.name])};`),
-    ...handlers.filter((h) => h.node).map((h) => `void ${h.name}();`),
+    ...handlers.filter((h) => h.node).map((h) => (h.ptype ? `void ${h.name}(${CT[h.ptype]} x);` : `void ${h.name}();`)),
     '',
     ...fnText,
     '',
+    ...(tasks.length ? [taskCpp(tasks.map(nm))] : []),
     ...hText,
     '',
     runText,

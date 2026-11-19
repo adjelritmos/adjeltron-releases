@@ -1,29 +1,68 @@
-// Bobina radial de núcleo de ferrite ("drum core"): discos de ferrite cinzento-escuro com o
-// enrolamento de cobre à vista; o valor impresso no topo.
-import { Cyl, Leg, useLabel, PITCH } from '../kit.jsx'
+// Bobina radial de núcleo de ferrite ("drum core", 8 × 10 mm): carretel de ferrite
+// cinzento-escuro mate (flanges com as arestas boleadas) e o enrolamento de fio de cobre
+// esmaltado à vista, espira a espira; o valor impresso no topo da flange de cima.
+import { THREE, geo, mat, PITCH } from '../kit.jsx'
+import { Mark, Wires } from './_dip.jsx'
 import { indSpec } from '@shared/parts/inductor.js'
 import { Badge, fmt } from './group-c-ui.jsx'
 
+const Y0 = 0.12
+
+// carretel de ferrite: flange de baixo, núcleo, flange de cima (perfil de revolução)
+const drumGeo = (r) =>
+  geo(`drum${r}`, () => {
+    const c = r * 0.55
+    const p = [
+      [0.001, 0], [r - 0.03, 0], [r, 0.03], [r, 0.08], [r - 0.03, 0.11], [c, 0.11],
+      [c, 0.71], [r - 0.03, 0.71], [r, 0.74], [r, 0.79], [r - 0.03, 0.82], [0.001, 0.82],
+    ]
+    const g = new THREE.LatheGeometry(p.map(([a, b]) => new THREE.Vector2(a, b)), 32)
+    g.computeVertexNormals()
+    return g
+  })
+// textura do enrolamento: espiras de cobre esmaltado com brilho e sombra entre elas
+let WIND
+function windMat() {
+  if (!WIND) {
+    const c = document.createElement('canvas')
+    c.width = 64
+    c.height = 256
+    const x = c.getContext('2d')
+    const n = 24
+    for (let i = 0; i < n; i++) {
+      const y = (i * 256) / n
+      const g = x.createLinearGradient(0, y, 0, y + 256 / n)
+      g.addColorStop(0, '#5a2a0e')
+      g.addColorStop(0.35, '#d8894a')
+      g.addColorStop(0.55, '#f1b07a')
+      g.addColorStop(1, '#6a3412')
+      x.fillStyle = g
+      x.fillRect(0, y, 64, 256 / n)
+    }
+    const t = new THREE.CanvasTexture(c)
+    t.colorSpace = THREE.SRGBColorSpace
+    t.wrapS = t.wrapT = THREE.RepeatWrapping
+    t.repeat.set(6, 1)
+    t.anisotropy = 4
+    WIND = new THREE.MeshStandardMaterial({ map: t, metalness: 0.75, roughness: 0.3, color: '#ffffff' })
+  }
+  return WIND
+}
+
 function Model({ part }) {
   const spec = indSpec(part.config?.uH ?? 1000)
-  const label = useLabel([{ text: spec[3].replace(' ', ''), font: 'bold 76px Arial', y: 128 }], 256, 256)
-  const y0 = 0.12
   const r = spec[0] >= 10000 ? 0.45 : 0.4
+  const rw = r * 0.88 // raio exterior do enrolamento (um pouco abaixo da flange)
   return (
     <group>
-      {[-PITCH, PITCH].map((x) => (
-        <Leg key={x} from={[x, 0, 0]} to={[x, y0 + 0.03, 0]} r={0.025} />
-      ))}
-      <Cyl r={r} h={0.1} pos={[0, y0 + 0.05, 0]} color="#3b3b3d" rough={0.85} seg={32} />
-      <Cyl r={r * 0.85} h={0.62} pos={[0, y0 + 0.41, 0]} color="#b06a2c" metal={0.6} rough={0.35} seg={32} />
-      {[0.18, 0.3, 0.42, 0.54, 0.66].map((y) => (
-        <Cyl key={y} r={r * 0.86} h={0.02} pos={[0, y0 + y, 0]} color="#8a4d1c" metal={0.5} rough={0.4} seg={32} />
-      ))}
-      <Cyl r={r} h={0.1} pos={[0, y0 + 0.77, 0]} color="#3b3b3d" rough={0.85} seg={32} />
-      <mesh position={[0, y0 + 0.821, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[r * 1.5, r * 1.5]} />
-        <meshBasicMaterial map={label} transparent color="#e8e8e8" />
-      </mesh>
+      <Wires id="indLegs" r={0.03} lines={[-PITCH, PITCH].map((x) => [[x, 0, 0], [x, Y0 + 0.02, 0]])} />
+      <group position={[0, Y0, 0]}>
+        <mesh geometry={drumGeo(r)} material={mat('#3a3a3c', 0, 0.85)} castShadow receiveShadow />
+        <mesh position={[0, 0.41, 0]} geometry={geo(`indWind${rw}`, () => new THREE.CylinderGeometry(rw, rw, 0.6, 32, 1, true))} material={windMat()} castShadow />
+        {/* fios de saída do enrolamento a descer junto à flange */}
+        <mesh position={[r * 0.75, 0.06, 0]} geometry={geo('indTail', () => new THREE.CylinderGeometry(0.018, 0.018, 0.12, 6))} material={mat('#c97a3e', 0.8, 0.3)} />
+        <Mark lines={[{ text: spec[3].replace(' ', ''), font: 'bold 64px Arial', y: 70 }, { text: '347', font: '34px Arial', y: 130 }]} px={[256, 180]} pos={[0, 0.822, 0]} rot={[-Math.PI / 2, 0, 0]} w={r * 1.3} h={r * 0.91} color="#e6e6e6" />
+      </group>
     </group>
   )
 }

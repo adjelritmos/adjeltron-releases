@@ -1,9 +1,9 @@
-// Regulador L7805CV (TO-220).
+// Regulador L7805CV (TO-220) com a marcação real: referência, lote e origem.
 import { To220 } from './_to220.jsx'
 import { Badge, fmt } from './group-c-ui.jsx'
 
 function Model({ part }) {
-  return <To220 text="L7805CV" sub="5V  IN·GND·OUT" heatsink={!!part.config?.heatsink} />
+  return <To220 text="L7805CV" code="GK347  VB" sub="CHN" heatsink={!!part.config?.heatsink} />
 }
 
 export function RegOverlay({ info, live }) {

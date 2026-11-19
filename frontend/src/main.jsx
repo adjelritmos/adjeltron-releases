@@ -1,6 +1,6 @@
 // Entrada do SITE (web): páginas públicas + a bancada em /app.
 // A app desktop tem a sua própria entrada (src/desktop.jsx, usada pelo projeto ../desktop).
-import React, { Suspense, lazy } from 'react'
+import React, { Suspense } from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter, Routes, Route } from 'react-router'
 import './index.css'
@@ -14,11 +14,14 @@ import Sobre from './screens/Sobre.jsx'
 import Descarregar from './screens/Descarregar.jsx'
 import Licencas from './screens/Licencas.jsx'
 import NaoEncontrada from './screens/NaoEncontrada.jsx'
+import { installStaleChunkReload, lazyReload } from './functions/staleChunks.js'
 
 document.documentElement.classList.add('dark')
+// depois de um deploy, partes com o hash antigo já não existem: recarrega uma vez
+installStaleChunkReload()
 
 // a bancada (editor + simulador 3D) é pesada: só se carrega quando se abre /app
-const Workbench = lazy(() => import('./screens/Workbench.jsx'))
+const Workbench = lazyReload(() => import('./screens/Workbench.jsx'))
 
 ReactDOM.createRoot(document.getElementById('threejs')).render(
   <React.StrictMode>

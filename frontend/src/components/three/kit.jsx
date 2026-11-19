@@ -259,6 +259,93 @@ export function mergedGeo(key, build) {
 }
 const pyrGeo = () => geo('pinTip', () => new THREE.CylinderGeometry(0.008, 0.045, 0.06, 4, 1).rotateY(Math.PI / 4))
 
+// ---------- formas curvas (sem caixas: perfis reais) ----------
+// linha poligonal com os cantos arredondados (raio r, n pontos por canto) — para dobras de chapa
+export function roundCorners(pts, r, n = 5) {
+  const out = [pts[0]]
+  for (let i = 1; i < pts.length - 1; i++) {
+    const [p0, p1, p2] = [pts[i - 1], pts[i], pts[i + 1]]
+    const d0 = Math.hypot(p1[0] - p0[0], p1[1] - p0[1])
+    const d1 = Math.hypot(p2[0] - p1[0], p2[1] - p1[1])
+    const k = Math.min(r, d0 / 2, d1 / 2)
+    const a = [p1[0] + ((p0[0] - p1[0]) * k) / d0, p1[1] + ((p0[1] - p1[1]) * k) / d0]
+    const b = [p1[0] + ((p2[0] - p1[0]) * k) / d1, p1[1] + ((p2[1] - p1[1]) * k) / d1]
+    for (let j = 0; j <= n; j++) {
+      const t = j / n
+      const u = 1 - t
+      out.push([u * u * a[0] + 2 * u * t * p1[0] + t * t * b[0], u * u * a[1] + 2 * u * t * p1[1] + t * t * b[1]])
+    }
+  }
+  out.push(pts[pts.length - 1])
+  return out
+}
+// fita de chapa dobrada: linha média (x, y) com espessura t, extrudida em z com largura w
+// (centrada em z = 0). Pernas em asa de gaivota, terminais, abas de fixação.
+export function bentStripGeo(key, pts, t, w) {
+  return geo(`strip:${key}`, () => {
+    const L = []
+    const R = []
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[Math.max(0, i - 1)]
+      const b = pts[Math.min(pts.length - 1, i + 1)]
+      const dx = b[0] - a[0]
+      const dy = b[1] - a[1]
+      const l = Math.hypot(dx, dy) || 1
+      const nx = -dy / l
+      const ny = dx / l
+      L.push(new THREE.Vector2(pts[i][0] + (nx * t) / 2, pts[i][1] + (ny * t) / 2))
+      R.push(new THREE.Vector2(pts[i][0] - (nx * t) / 2, pts[i][1] - (ny * t) / 2))
+    }
+    const g = new THREE.ExtrudeGeometry(new THREE.Shape([...L, ...R.reverse()]), { depth: w, bevelEnabled: false, curveSegments: 1 })
+    g.translate(0, 0, -w / 2)
+    return g
+  })
+}
+// perfil de revolução em torno de y: pts = [[raio, y], ...] (latas, cúpulas, botões, cabeças)
+export function latheGeo(key, pts, seg = 32, phiStart = 0, phiLength = Math.PI * 2) {
+  return geo(`lathe:${key}`, () => new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(Math.max(r, 1e-4), y)), seg, phiStart, phiLength))
+}
+// retângulo de cantos arredondados (forma 2D, centrada)
+export function roundRectShape(w, d, r) {
+  const s = new THREE.Shape()
+  const x = -w / 2
+  const y = -d / 2
+  r = Math.min(r, w / 2 - 1e-4, d / 2 - 1e-4)
+  s.moveTo(x + r, y)
+  s.lineTo(x + w - r, y)
+  s.quadraticCurveTo(x + w, y, x + w, y + r)
+  s.lineTo(x + w, y + d - r)
+  s.quadraticCurveTo(x + w, y + d, x + w - r, y + d)
+  s.lineTo(x + r, y + d)
+  s.quadraticCurveTo(x, y + d, x, y + d - r)
+  s.lineTo(x, y + r)
+  s.quadraticCurveTo(x, y, x + r, y)
+  return s
+}
+// sólido "moldado": forma 2D no plano xz, altura h em y (base em y = 0), com chanfro de saída do
+// molde em cima e em baixo (bevel) — corpos de CI, caixas de plástico injetado, latas ovais
+export function moldedGeo(key, shape, h, draft = 0.02, bevelSegments = 1) {
+  return geo(`mold:${key}`, () => {
+    const bt = Math.min(draft, h / 3)
+    const g = new THREE.ExtrudeGeometry(shape, { depth: Math.max(1e-4, h - 2 * bt), bevelEnabled: bt > 0, bevelThickness: bt, bevelSize: bt * 0.8, bevelOffset: -bt * 0.8, bevelSegments, curveSegments: 10 })
+    g.rotateX(-Math.PI / 2)
+    g.translate(0, bt, 0)
+    g.computeVertexNormals()
+    return g
+  })
+}
+// estádio (retângulo com pontas semicirculares) ao longo de x — cristais HC-49, LEDs ovais
+export function stadiumShape(l, d) {
+  const r = d / 2
+  const s = new THREE.Shape()
+  s.moveTo(-l / 2 + r, -r)
+  s.lineTo(l / 2 - r, -r)
+  s.absarc(l / 2 - r, 0, r, -Math.PI / 2, Math.PI / 2, false)
+  s.lineTo(-l / 2 + r, r)
+  s.absarc(-l / 2 + r, 0, r, Math.PI / 2, (3 * Math.PI) / 2, false)
+  return s
+}
+
 // placa de circuito impresso (arestas boleadas, verniz) com furos de montagem metalizados
 export function Pcb({ size, color = '#1d4ed8', pos = [0, 0, 0], holes = true }) {
   const [w, h, d] = size
@@ -311,23 +398,36 @@ export function SilkText({ text, lines, pos, w, d, rotY = 0, color = '#f2f2f2', 
 
 // circuito integrado SMD: corpo epóxi preto, pernas em asa de gaivota (SOIC/TSSOP: 2 lados;
 // QFP: 4 lados; QFN: só almofadas), ponto do pino 1 e marcação opcional
+// Corpo moldado com ângulo de saída (chanfro em cima e em baixo, como os reais) e pernas de
+// chapa dobradas com raios de dobra reais (perfil em S). Pino 1: covinha circular no canto.
+// Perna em asa de gaivota: sai do corpo a meia altura, desce com duas dobras e assenta o pé na placa.
+// Linha média no plano (x = distância para fora do corpo, y = altura); espessura 0,15 mm.
+function gullLeg(ye, reach) {
+  const t = 0.015
+  const xb = reach * 0.42
+  return roundCorners([[-0.02, ye], [xb * 0.55, ye], [xb, t / 2], [reach, t / 2]], 0.022, 4)
+}
+const ROT_SIDE = { px: 0, nx: Math.PI, pz: -Math.PI / 2, nz: Math.PI / 2 }
 export function Chip({ pos, size = [0.5, 0.15, 0.4], pkg = 'soic', n = 4, rotY = 0, label, labelColor = '#bdbdbd' }) {
   const [w, h, d] = size
-  const legs = mergedGeo(`chip${pkg}${w},${h},${d},${n}`, () => {
+  const by = pkg === 'qfn' ? 0 : 0.015
+  const reach = 0.1 + 0.0175
+  const legW = pkg === 'qfp' ? 0.03 : 0.04
+  const legs = mergedGeo(`chip2${pkg}${w},${h},${d},${n}`, () => {
     const out = []
-    const leg = geo('gull', () => new THREE.BoxGeometry(1, 1, 1))
+    const leg = pkg === 'qfn' ? null : bentStripGeo(`gull${h.toFixed(3)}`, gullLeg(by + h * 0.42, reach), 0.015, 1)
+    const pad = unitBox()
     const side = (axisLen, off, horiz) => {
       for (let i = 0; i < n; i++) {
         const t = n > 1 ? (i / (n - 1) - 0.5) * axisLen * 0.84 : 0
         for (const s of [-1, 1]) {
           if (pkg === 'qfn') {
-            out.push([leg, horiz ? [t, 0.008, s * (off - 0.02)] : [s * (off - 0.02), 0.008, t], [0, 0, 0], horiz ? [0.03, 0.016, 0.06] : [0.06, 0.016, 0.03]])
+            // almofadas expostas na base, a dobrar pela aresta (flanco molhável)
+            out.push([pad, horiz ? [t, 0.012, s * (off - 0.025)] : [s * (off - 0.025), 0.012, t], [0, 0, 0], horiz ? [0.025, 0.024, 0.05] : [0.05, 0.024, 0.025]])
             continue
           }
-          // troço horizontal saindo do corpo + pé assente na placa
-          out.push([leg, horiz ? [t, h * 0.45, s * (off + 0.03)] : [s * (off + 0.03), h * 0.45, t], [0, 0, 0], horiz ? [0.035, 0.018, 0.07] : [0.07, 0.018, 0.035]])
-          out.push([leg, horiz ? [t, h * 0.22, s * (off + 0.07)] : [s * (off + 0.07), h * 0.22, t], [0, 0, 0], horiz ? [0.035, h * 0.45, 0.018] : [0.018, h * 0.45, 0.035]])
-          out.push([leg, horiz ? [t, 0.009, s * (off + 0.1)] : [s * (off + 0.1), 0.009, t], [0, 0, 0], horiz ? [0.035, 0.018, 0.07] : [0.07, 0.018, 0.035]])
+          const k = horiz ? (s > 0 ? 'pz' : 'nz') : s > 0 ? 'px' : 'nx'
+          out.push([leg, horiz ? [t, 0, s * off] : [s * off, 0, t], [0, ROT_SIDE[k], 0], [1, 1, legW]])
         }
       }
     }
@@ -335,47 +435,61 @@ export function Chip({ pos, size = [0.5, 0.15, 0.4], pkg = 'soic', n = 4, rotY =
     if (pkg === 'qfp' || pkg === 'qfn') side(d, w / 2, false)
     return out
   })
-  const by = pkg === 'qfn' ? 0 : 0.015
+  const body = moldedGeo(`chip${w},${h},${d},${pkg}`, roundRectShape(w, d, 0.01), h, pkg === 'qfn' ? 0.006 : Math.min(0.03, h * 0.22))
   return (
     <group position={pos} rotation={[0, rotY, 0]}>
-      <mesh position={[0, by + h / 2, 0]} castShadow geometry={rboxGeo([w, h, d], 0.012)} material={mat('#161616', 0, 0.42)} />
-      <mesh geometry={legs} material={mat(METAL.tin, 1, 0.3)} />
-      <mesh position={[-w / 2 + 0.06, by + h + 0.001, d / 2 - 0.06]} rotation={[-Math.PI / 2, 0, 0]} geometry={geo('dot', () => new THREE.CircleGeometry(0.025, 12))} material={mat('#3a3a3a', 0, 0.9)} />
-      {label && <SilkText text={label} pos={[0, by + h + 0.002, 0]} w={w * 0.85} d={Math.min(d * 0.4, w * 0.22)} color={labelColor} font="bold 42px Arial" />}
+      <mesh position={[0, by, 0]} castShadow receiveShadow geometry={body} material={mat('#161616', 0, 0.42)} />
+      <mesh geometry={legs} material={mat(METAL.tin, 1, 0.3)} castShadow />
+      {/* covinha do pino 1 (moldada, mais lisa e escura que o resto do topo) */}
+      <mesh position={[-w / 2 + Math.min(0.07, w * 0.18), by + h + 0.001, d / 2 - Math.min(0.07, d * 0.18)]} rotation={[-Math.PI / 2, 0, 0]} geometry={geo('dot', () => new THREE.CircleGeometry(0.025, 16))} material={mat('#0b0b0b', 0, 0.2)} />
+      {label && <SilkText text={label} pos={[0, by + h + 0.002, 0]} w={w * 0.8} d={Math.min(d * 0.4, w * 0.22)} color={labelColor} font="bold 42px Arial" />}
     </group>
   )
 }
 
-// passivo SMD (0805/1206): corpo cerâmico com terminais estanhados nas pontas (ao longo de x)
+// passivo SMD (0805/1206) ao longo de x: corpo cerâmico com terminais estanhados que abraçam as
+// pontas (cantos boleados). Escuro → resistência (cerâmica branca com a camada resistiva preta
+// por cima); outra cor → condensador MLCC (corpo todo dessa cor).
 export function Smd({ pos, rotY = 0, len = 0.2, wid = 0.12, h = 0.06, color = '#1c1c1c' }) {
+  const c = new THREE.Color(color)
+  const res = c.r + c.g + c.b < 0.45
+  const e = len * 0.18
   return (
     <group position={pos} rotation={[0, rotY, 0]}>
-      <mesh position={[0, h / 2, 0]} geometry={boxGeo([len * 0.7, h, wid])} material={mat(color, 0, 0.55)} />
-      <mesh position={[0, h / 2, 0]} geometry={mergedGeo(`smdEnds${len},${wid},${h}`, () => [-1, 1].map((s) => [geo('gull', () => new THREE.BoxGeometry(1, 1, 1)), [(s * len * 0.425), 0, 0], [0, 0, 0], [len * 0.15, h * 1.02, wid * 1.02]]))} material={mat(METAL.tin, 1, 0.3)} />
+      <mesh position={[0, h / 2, 0]} geometry={boxGeo([len - 2 * e + 0.004, h * 0.96, wid * 0.98])} material={res ? mat('#ecebe4', 0, 0.6) : mat(color, 0, 0.55)} castShadow />
+      {res && <mesh position={[0, h * 0.97, 0]} geometry={boxGeo([len - 2 * e, h * 0.08, wid * 0.94])} material={mat('#111111', 0, 0.5)} />}
+      <mesh geometry={mergedGeo(`smdEnds2${len},${wid},${h}`, () => [-1, 1].map((s) => [geo(`smdCap${e},${h},${wid}`, () => new RoundedBoxGeometry(e, h, wid, 2, Math.min(e, h, wid) * 0.25)), [s * (len / 2 - e / 2), h / 2, 0]]))} material={mat(METAL.tin, 1, 0.28)} />
     </group>
   )
 }
 
-// condensador eletrolítico vertical: manga plástica com risca do negativo e tampa de alumínio
-// com o corte em cruz (válvula de segurança)
+// condensador eletrolítico radial (lata de alumínio com manga termorretrátil): perfil de
+// revolução real — rebordo enrolado na base, friso de vedação, rebordo de cima dobrado sobre a
+// tampa de alumínio com o corte em K/cruz (válvula de segurança) e a faixa do negativo
 export function ECap({ pos, r = 0.3, h = 0.6, color = '#1b2a6b', stripe = '#c9d2e6' }) {
+  const prof = [
+    [0, 0.01], [r * 0.86, 0.01], [r * 0.95, 0.025], [r, 0.06], [r, h * 0.16], [r * 0.93, h * 0.19], [r * 0.93, h * 0.23], [r, h * 0.26],
+    [r, h - 0.05], [r * 0.985, h - 0.018], [r * 0.95, h], [r * 0.9, h - 0.004],
+  ]
   return (
     <group position={pos}>
-      <mesh position={[0, h / 2, 0]} castShadow geometry={cylGeo(r, r, h, 24)} material={mat(color, 0, 0.35)} />
-      <mesh position={[0, h / 2, 0]} geometry={geo(`ecapStripe${r},${h}`, () => new THREE.CylinderGeometry(r + 0.003, r + 0.003, h * 0.98, 6, 1, true, -0.45, 0.9))} material={mat(stripe, 0, 0.4)} />
-      <mesh position={[0, h * 0.9, 0]} geometry={geo(`ecapGroove${r}`, () => new THREE.TorusGeometry(r * 0.98, 0.02, 6, 24).rotateX(Math.PI / 2))} material={mat(color, 0, 0.4)} />
-      <mesh position={[0, h + 0.004, 0]} geometry={cylGeo(r * 0.93, r * 0.93, 0.008, 24)} material={mat(METAL.alu, 1, 0.35)} />
-      <mesh position={[0, h + 0.01, 0]} geometry={mergedGeo(`ecapCross${r}`, () => [[geo('gull', () => new THREE.BoxGeometry(1, 1, 1)), [0, 0, 0], [0, 0, 0], [r * 1.3, 0.006, 0.02]], [geo('gull', () => new THREE.BoxGeometry(1, 1, 1)), [0, 0, 0], [0, 0, 0], [0.02, 0.006, r * 1.3]]])} material={mat('#8d9196', 1, 0.5)} />
+      <mesh castShadow receiveShadow geometry={latheGeo(`ecap${r},${h}`, prof, 40)} material={mat(color, 0, 0.32)} />
+      {/* faixa do negativo (impressa na manga, com sinais "−") */}
+      <mesh geometry={latheGeo(`ecapStripe${r},${h}`, prof.slice(2, 10).map(([x, y]) => [x + 0.002, y]), 8, -0.3, 0.6)} material={mat(stripe, 0, 0.4)} />
+      {/* tampa de alumínio, ligeiramente rebaixada, com o corte em cruz */}
+      <mesh position={[0, h - 0.006, 0]} geometry={cylGeo(r * 0.9, r * 0.9, 0.004, 40)} material={mat(METAL.alu, 1, 0.32)} />
+      <mesh position={[0, h - 0.003, 0]} geometry={mergedGeo(`ecapCross2${r}`, () => [[unitBox(), [0, 0, 0], [0, 0, 0], [r * 1.25, 0.004, 0.018]], [unitBox(), [0, 0, 0], [0, 0, 0], [0.018, 0.004, r * 1.25]]])} material={mat('#7d8186', 1, 0.55)} />
     </group>
   )
 }
 
-// cristal HC-49/S (caixa de níquel oval, ao longo de x)
+// cristal HC-49/S (perfil baixo, ao longo de x): lata oval de níquel com topo boleado, assente
+// num rebordo (flange) da base também oval
 export function Crystal({ pos, rotY = 0, l = 1.1, h = 0.35, d = 0.45 }) {
   return (
     <group position={pos} rotation={[0, rotY, 0]}>
-      <mesh position={[0, 0.03, 0]} geometry={boxGeo([l + 0.04, 0.06, d + 0.04])} material={mat('#1a1a1a', 0, 0.6)} />
-      <mesh position={[0, 0.06 + h / 2, 0]} castShadow geometry={rboxGeo([l, h, d], d / 2.2)} material={mat(METAL.nickel, 1, 0.3)} />
+      <mesh castShadow geometry={moldedGeo(`xtalBase${l},${d}`, stadiumShape(l + 0.06, d + 0.06), 0.05, 0.01)} material={mat(METAL.nickel, 1, 0.35)} />
+      <mesh position={[0, 0.05, 0]} castShadow geometry={moldedGeo(`xtalCan${l},${h},${d}`, stadiumShape(l, d), h, Math.min(0.05, h * 0.2), 3)} material={mat(METAL.nickel, 1, 0.26)} />
     </group>
   )
 }
@@ -401,14 +515,54 @@ export function UsbB({ pos, rotY = 0, size = [1.6, 1.1, 1.2] }) {
     </group>
   )
 }
-// micro-USB: concha metálica achatada de cantos boleados
+// micro-USB B (Molex 47346): concha de chapa com a secção trapezoidal real (cantos de baixo
+// chanfrados — é o que impede ligar a ficha ao contrário), boca com a língua de contactos e os 5
+// contactos dourados, abas laterais de fixação dobradas para a placa e lábio da boca virado para fora
+function microUsbShape(w, h, t = 0) {
+  const s = new THREE.Shape()
+  const c = h * 0.38 // chanfro dos cantos de baixo
+  const r = h * 0.18
+  s.moveTo(-w / 2 + c - t, t)
+  s.lineTo(w / 2 - c + t, t)
+  s.lineTo(w / 2 + t, c)
+  s.lineTo(w / 2 + t, h - r - t)
+  s.quadraticCurveTo(w / 2 + t, h - t, w / 2 - r + t, h - t)
+  s.lineTo(-w / 2 + r - t, h - t)
+  s.quadraticCurveTo(-w / 2 - t, h - t, -w / 2 - t, h - r - t)
+  s.lineTo(-w / 2 - t, c)
+  s.closePath()
+  return s
+}
+// abertura interior da concha (mesmo trapézio, 0,25 mm de chapa), subida dy
+const microUsbHole = (w, h, dy) => new THREE.Path(microUsbShape(w - 0.05, h - 0.05).getPoints().map((p) => new THREE.Vector2(p.x, p.y + dy)).reverse())
 export function MicroUsb({ pos, rotY = 0, size = [0.55, 0.28, 0.75] }) {
   const [l, h, w] = size
+  // concha: perfil extrudido ao longo de x (oco: contorno exterior com o interior recortado)
+  const shell = geo(`musbShell${l},${h},${w}`, () => {
+    const outer = microUsbShape(w, h)
+    outer.holes.push(microUsbHole(w, h, 0.025))
+    const g = new THREE.ExtrudeGeometry(outer, { depth: l, bevelEnabled: false, curveSegments: 6 })
+    g.translate(0, 0, -l / 2)
+    g.rotateY(-Math.PI / 2)
+    return g
+  })
   return (
     <group position={pos} rotation={[0, rotY, 0]}>
-      <mesh position={[0, h / 2, 0]} castShadow geometry={rboxGeo(size, 0.08)} material={mat(METAL.nickel, 1, 0.34)} />
-      <mesh position={[-l / 2 - 0.001, h / 2, 0]} rotation={[0, -Math.PI / 2, 0]} geometry={geo('plane1', () => new THREE.PlaneGeometry(1, 1))} scale={[w * 0.82, h * 0.55, 1]} material={mat('#0a0a0a', 0, 0.9)} />
-      <mesh position={[-l / 2 + 0.1, h / 2, 0]} geometry={boxGeo([0.2, 0.03, w * 0.6])} material={mat('#1a1a1a', 0, 0.6)} />
+      <mesh castShadow geometry={shell} material={mat(METAL.nickel, 1, 0.3)} />
+      {/* fundo da boca (escuro), língua de plástico com os contactos dourados */}
+      <mesh position={[l / 2 - 0.03, h / 2, 0]} geometry={boxGeo([0.04, h * 0.85, w * 0.92])} material={mat('#0c0c0c', 0, 0.8)} />
+      <mesh position={[0, h * 0.56, 0]} geometry={boxGeo([l * 0.85, 0.035, w * 0.62])} material={mat('#1a1a1a', 0, 0.55)} />
+      <mesh position={[-l * 0.05, h * 0.56 - 0.02, 0]} geometry={mergedGeo(`musbPins${l},${w}`, () => [-2, -1, 0, 1, 2].map((i) => [unitBox(), [0, 0, i * w * 0.1], [0, 0, 0], [l * 0.6, 0.006, 0.025]]))} material={mat(METAL.gold, 1, 0.25)} />
+      {/* lábio da boca dobrado para fora e abas de fixação laterais */}
+      <mesh position={[-l / 2 - 0.012, 0, 0]} geometry={geo(`musbLip${h},${w}`, () => {
+        const lip = microUsbShape(w + 0.05, h + 0.03)
+        lip.holes.push(microUsbHole(w, h, 0.04))
+        const g = new THREE.ExtrudeGeometry(lip, { depth: 0.024, bevelEnabled: false, curveSegments: 6 })
+        g.translate(0, -0.015, -0.012)
+        g.rotateY(-Math.PI / 2)
+        return g
+      })} material={mat(METAL.nickel, 1, 0.3)} />
+      <mesh geometry={mergedGeo(`musbTabs${l},${w},${h}`, () => [-1, 1].map((s) => [bentStripGeo(`musbTab${h}`, roundCorners([[0, h * 0.7], [0.07, h * 0.7], [0.07, 0.008], [0.16, 0.008]], 0.02, 3), 0.016, 1), [l * 0.1, 0, s * (w / 2)], [0, s > 0 ? -Math.PI / 2 : Math.PI / 2, 0], [1, 1, 0.16]]))} material={mat(METAL.nickel, 1, 0.3)} />
     </group>
   )
 }
@@ -425,17 +579,35 @@ export function BarrelJack({ pos, rotY = 0, size = [1.45, 1.1, 0.9] }) {
   )
 }
 // botão tátil 6×6 SMD/THT (base metálica, corpo preto, atuador)
+// Redondo (6×6 THT/SMD): base de plástico moldada, tampa de chapa niquelada com as abas dobradas
+// pelos lados até à base, os 4 pinos de plástico dos cantos a atravessar a chapa e o atuador
+// redondo (torneado, com aba e topo ligeiramente abaulado).
+// round=false: interruptor SMD 3×4 mm (placas ESP32/Pico): caixa com tampa metálica, atuador
+// retangular e terminais em asa de gaivota nos lados.
 export function TactSwitch({ pos, size = 0.6, cap = '#1d1d1d', round = true }) {
   const s = size
+  if (!round) {
+    const w = s
+    const d = s * 0.75
+    return (
+      <group position={pos}>
+        <mesh castShadow geometry={moldedGeo(`tactR${w},${d}`, roundRectShape(w, d, 0.015), 0.13, 0.012)} material={mat('#e9e9e6', 0, 0.5)} />
+        <mesh position={[0, 0.13, 0]} geometry={moldedGeo(`tactRc${w},${d}`, roundRectShape(w * 0.98, d * 0.98, 0.01), 0.018, 0.004)} material={mat(METAL.nickel, 1, 0.3)} />
+        <mesh position={[0, 0.148, 0]} castShadow geometry={moldedGeo(`tactRa${w},${d}`, roundRectShape(w * 0.42, d * 0.42, 0.02), 0.06, 0.012, 2)} material={mat(cap, 0, 0.45)} />
+        <mesh geometry={mergedGeo(`tactRl${w},${d}`, () => [-1, 1].flatMap((sx) => [-1, 1].map((sz) => [bentStripGeo('tactRleg', gullLeg(0.06, 0.08), 0.015, 1), [sx * (w / 2), 0, sz * d * 0.3], [0, sx > 0 ? 0 : Math.PI, 0], [1, 1, 0.05]])))} material={mat(METAL.tin, 1, 0.3)} />
+      </group>
+    )
+  }
+  const pegs = [[-1, -1], [1, -1], [-1, 1], [1, 1]]
   return (
     <group position={pos}>
-      <mesh position={[0, 0.09, 0]} castShadow geometry={rboxGeo([s, 0.18, s], 0.02)} material={mat('#1a1a1a', 0, 0.5)} />
-      <mesh position={[0, 0.19, 0]} geometry={boxGeo([s * 1.01, 0.025, s * 1.01])} material={mat(METAL.nickel, 1, 0.3)} />
-      {round ? (
-        <mesh position={[0, 0.25, 0]} geometry={cylGeo(s * 0.28, s * 0.28, 0.12, 20)} material={mat(cap, 0, 0.45)} />
-      ) : (
-        <mesh position={[0, 0.23, 0]} geometry={rboxGeo([s * 0.45, 0.08, s * 0.35], 0.02)} material={mat(cap, 0, 0.45)} />
-      )}
+      <mesh castShadow receiveShadow geometry={moldedGeo(`tactB${s}`, roundRectShape(s, s, s * 0.04), 0.17, 0.015)} material={mat('#1a1a1a', 0, 0.5)} />
+      {/* chapa de cima com as abas dobradas pelos lados (±x) */}
+      <mesh position={[0, 0.17, 0]} geometry={moldedGeo(`tactP${s}`, roundRectShape(s * 1.005, s * 0.96, 0.01), 0.02, 0.004)} material={mat(METAL.nickel, 1, 0.28)} />
+      <mesh geometry={mergedGeo(`tactTab${s}`, () => [-1, 1].map((sx) => [bentStripGeo('tactTab', roundCorners([[-0.01, 0.185], [0.006, 0.185], [0.006, 0.06]], 0.01, 3), 0.012, 1), [sx * (s / 2), 0, 0], [0, sx > 0 ? 0 : Math.PI, 0], [1, 1, s * 0.4]]))} material={mat(METAL.nickel, 1, 0.3)} />
+      <mesh geometry={mergedGeo(`tactPeg${s}`, () => pegs.map(([x, z]) => [cylGeo(s * 0.065, s * 0.065, 0.03, 12), [x * s * 0.34, 0.2, z * s * 0.34]]))} material={mat('#141414', 0, 0.5)} />
+      {/* atuador torneado: aba, haste e topo abaulado */}
+      <mesh castShadow geometry={latheGeo(`tactCap${s}`, [[0, 0.19], [s * 0.3, 0.19], [s * 0.3, 0.205], [s * 0.26, 0.21], [s * 0.26, 0.3], [s * 0.24, 0.312], [s * 0.15, 0.318], [0, 0.32]], 28)} material={mat(cap, 0, 0.42)} />
     </group>
   )
 }
@@ -480,15 +652,33 @@ export function EspModule({ pos, rotY = 0, l = 1.8, w = 1.8, title = 'ESP-WROOM-
         <meshStandardMaterial map={antennaTex()} roughness={0.35} metalness={0.3} />
       </mesh>
       <group position={[-l / 2 + 0.05 + sl / 2, 0.08, 0]}>
-        <mesh position={[0, 0.12, 0]} castShadow geometry={rboxGeo([sl, 0.24, w - 0.12], 0.02)} material={mat(METAL.nickel, 1, 0.3)} />
+        {/* blindagem de chapa estampada: saia mais larga em baixo (soldada ao substrato) e tampa
+            com as arestas dobradas (raio de dobra) */}
+        <mesh castShadow geometry={moldedGeo(`espSkirt${sl},${w}`, roundRectShape(sl + 0.03, w - 0.09, 0.02), 0.03, 0.004)} material={mat(METAL.nickel, 1, 0.34)} />
+        <mesh castShadow geometry={moldedGeo(`espShield${sl},${w}`, roundRectShape(sl, w - 0.12, 0.03), 0.24, 0.03, 3)} material={mat(METAL.nickel, 1, 0.26)} />
         <SilkText lines={[{ text: title, font: 'bold 40px Arial', y: 40 }, { text: sub, font: '30px Arial', y: 92 }, { text: 'FCC ID: 2AC7Z-ESPWROOM32', font: '20px Arial', y: 136 }]} px={[512, 170]} pos={[0, 0.242, 0]} w={(w - 0.2)} d={(w - 0.2) / 3} rotY={-Math.PI / 2} color="#5d6166" />
       </group>
-      {/* castelações (almofadas laterais) */}
-      <mesh geometry={mergedGeo(`espCast${l},${w}`, () => {
+      {/* castelações: meios-furos metalizados nas arestas (14 + 14 nos lados, 10 na ponta oposta
+          à antena), cada um com a almofada dourada por cima */}
+      <mesh geometry={mergedGeo(`espCast2${l},${w}`, () => {
         const out = []
-        for (let i = 0; i < 12; i++) for (const s of [-1, 1]) out.push([unitBox(), [-l / 2 + 0.12 + i * ((l - ant - 0.2) / 11), 0.04, s * (w / 2 + 0.003)], [0, 0, 0], [0.05, 0.082, 0.012]])
+        const half = geo('castHalf', () => new THREE.CylinderGeometry(0.03, 0.03, 0.082, 10, 1, true, 0, Math.PI))
+        const pad = unitBox()
+        const ns = 14
+        for (let i = 0; i < ns; i++) {
+          const x = -l / 2 + 0.12 + i * ((l - ant - 0.22) / (ns - 1))
+          for (const s of [-1, 1]) {
+            out.push([half, [x, 0.04, s * (w / 2)], [0, s > 0 ? Math.PI / 2 : -Math.PI / 2, 0]])
+            out.push([pad, [x, 0.0815, s * (w / 2 - 0.05)], [0, 0, 0], [0.07, 0.003, 0.1]])
+          }
+        }
+        for (let i = 0; i < 10; i++) {
+          const z = (i - 4.5) * ((w - 0.5) / 9)
+          out.push([half, [-l / 2, 0.04, z]])
+          out.push([pad, [-l / 2 + 0.05, 0.0815, z], [0, 0, 0], [0.1, 0.003, 0.07]])
+        }
         return out
-      })} material={mat(METAL.gold, 1, 0.3)} />
+      })} material={mat(METAL.gold, 1, 0.3, { side: THREE.DoubleSide })} />
     </group>
   )
 }
@@ -639,6 +829,10 @@ export function FemaleHeader({ n, rows = 1, x, z, top, h = 0.85, pitch = PITCH }
 }
 
 // mesh cujo brilho/cor segue uma função lida a cada frame (0..1)
+// brilho dos ecrãs (LCD, OLED, TFT, 7 segmentos, matrizes): as imagens não passam pelo tone
+// mapping, por isso multiplicam-se por este cinzento para não ficarem mais claras que a cena
+export const SCREEN_TINT = '#d2d2d2'
+
 export function Glow({ children, color, read, pos, rot, base = '#333', intensity = 3, light = 0, halo = 0 }) {
   const mat = useRef()
   const l = useRef()

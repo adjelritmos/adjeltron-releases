@@ -1,8 +1,8 @@
 // Polia de plástico injetado (amarela por omissão): aro com gola em V para o elástico, 4 raios
 // largos com furos nos braços e cubo com furo do veio — como as polias dos kits de brinquedo.
-import { Cyl, THREE, geo, mat } from '../kit.jsx'
+import { THREE, geo, mat } from '../kit.jsx'
 import { extrudeXZ, holeCircle } from './_mdfKit.jsx'
-import { poliaDims, POLIA } from '@shared/parts/poliaElastico.js'
+import { poliaDims } from '@shared/parts/poliaElastico.js'
 
 // aro com gola: perfil (raio, altura) girado à volta do eixo
 function rimGeo(R, r, w) {
@@ -18,7 +18,7 @@ function rimGeo(R, r, w) {
       [R - t, w],
       [R - t, 0],
     ].map(([a, b]) => new THREE.Vector2(a, b))
-    return new THREE.LatheGeometry(pts, 56)
+    return new THREE.LatheGeometry(pts, 64)
   })
 }
 // disco central: raios largos com janelas entre eles e furos nos braços
@@ -47,8 +47,12 @@ function Model({ part }) {
     <group>
       <mesh geometry={rimGeo(R, r, w)} material={m} castShadow receiveShadow />
       <mesh geometry={extrudeXZ(`poliaWeb${R}`, w * 0.4, () => webShape(R))} position={[0, w * 0.3, 0]} material={m} castShadow receiveShadow />
-      <Cyl r={0.42} h={w + 0.2} pos={[0, (w + 0.2) / 2, 0]} color={col} rough={0.5} seg={20} />
-      <Cyl r={0.17} h={w + 0.22} pos={[0, (w + 0.2) / 2, 0]} color="#111" seg={12} />
+      {/* cubo com o furo do veio passante (arestas boleadas da injeção) */}
+      <mesh geometry={geo(`poliaHub${w}`, () => {
+        const h = w + 0.2
+        const p = [[0.17, 0], [0.38, 0], [0.42, 0.04], [0.42, h - 0.04], [0.38, h], [0.17, h], [0.17, 0]].map(([a, b]) => new THREE.Vector2(a, b))
+        return new THREE.LatheGeometry(p, 24)
+      })} material={m} castShadow receiveShadow />
     </group>
   )
 }

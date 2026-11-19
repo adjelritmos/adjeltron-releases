@@ -1,6 +1,7 @@
-// Placa perfurada de alumínio com uma grelha de furos a cada 8 mm.
-import { RBox } from '../kit.jsx'
-import { Holes, ALU, gridPts } from './_mechKit.jsx'
+// Placa perfurada de alumínio de 3 mm (como as placas dos kits Makeblock/goBILDA): cantos
+// boleados, grelha de furos M4 passantes a cada 8 mm com as arestas chanfradas e acabamento
+// escovado.
+import { plateGeo, rrectShape, addHole, brushedMat, ALU, gridPts } from './_mechKit.jsx'
 import { HOLE } from '@shared/parts/_mech.js'
 import { PLATE_T, PLATE_SIZES, plateDims } from '@shared/parts/mechPlate.js'
 
@@ -8,12 +9,18 @@ function Model({ part }) {
   const c = part.config || {}
   const [x, z] = plateDims(c)
   const [nz, nx] = PLATE_SIZES[c.size] || PLATE_SIZES['7x9']
-  return (
-    <group>
-      <RBox size={[x, PLATE_T, z]} r={0.12} pos={[0, PLATE_T / 2, 0]} color={ALU} metal={0.85} rough={0.32} />
-      <Holes pts={gridPts(nx, nz, HOLE, PLATE_T / 2)} r={0.2} h={PLATE_T + 0.02} />
-    </group>
+  const g = plateGeo(
+    `mechPlate${x},${z},${nx},${nz}`,
+    PLATE_T,
+    () => {
+      const s = rrectShape(-x / 2, -z / 2, x / 2, z / 2, 0.35)
+      for (const [px, , pz] of gridPts(nx, nz, HOLE, 0)) addHole(s, px, -pz, 0.21)
+      return s
+    },
+    0.025,
+    nx * nz > 100 ? 8 : 12,
   )
+  return <mesh geometry={g} material={brushedMat(ALU, 0.85, 0.34)} castShadow receiveShadow />
 }
 
 export default { type: 'mechPlate', Model }

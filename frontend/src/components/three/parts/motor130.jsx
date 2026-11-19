@@ -1,39 +1,14 @@
 // Motor 130 de carrinho: lata metálica prateada de 20 × 15 mm (redonda com as faces de cima e
 // de baixo achatadas), tampa de plástico preta atrás com os dois terminais de latão furados nos
 // lados, casquilho e veio de 2 mm à frente (o veio roda com o mount "shaft").
-import { Box, Cyl, THREE, geo, mat, useFrame, useRef } from '../kit.jsx'
+import { Box, Cyl, mat, useFrame, useRef } from '../kit.jsx'
+import { canGeo } from './nema17.jsx' // lata redonda achatada (partilhada com os outros motores)
 import { mountRotNow } from '../../../functions/mechLive.js'
 import { rotX } from './_mechKit.jsx'
 import { MotorOverlay } from './motorEnc.jsx'
 import def, { M130 } from '@shared/parts/motor130.js'
 
 const { AY, canL, capL, canR, flat, tabZ } = M130
-
-// perfil (z, y) da lata: círculo de raio r cortado por |y| ≤ h, extrudido segundo −x
-function canGeo(r, h, len, bevel) {
-  return geo(`m130:${r},${h},${len},${bevel}`, () => {
-    const R = r - bevel
-    const Hh = h - bevel
-    const a0 = Math.asin(Hh / R)
-    const sh = new THREE.Shape()
-    const N = 14
-    for (let i = 0; i <= N; i++) {
-      const a = -a0 + (2 * a0 * i) / N // arco direito (+z)
-      const [x, y] = [R * Math.cos(a), R * Math.sin(a)]
-      i ? sh.lineTo(x, y) : sh.moveTo(x, y)
-    }
-    for (let i = 0; i <= N; i++) {
-      const a = Math.PI - a0 + (2 * a0 * i) / N // arco esquerdo (−z)
-      sh.lineTo(R * Math.cos(a), R * Math.sin(a))
-    }
-    sh.closePath()
-    const g = new THREE.ExtrudeGeometry(sh, { depth: len - 2 * bevel, bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 2, curveSegments: 4 })
-    g.translate(0, 0, bevel)
-    g.rotateY(-Math.PI / 2) // (z_forma, y, profundidade) → (x = −profundidade, y, z)
-    g.computeVertexNormals()
-    return g
-  })
-}
 
 const SILVER = '#d3d7db'
 const BRASS = '#d9a441'
@@ -52,14 +27,24 @@ function Model({ part }) {
       {[-1, 1].map((s) => (
         <Box key={s} size={[0.32, 0.18, 0.02]} pos={[-canL + 0.55, AY, s * (canR - 0.005)]} color="#2a2d30" />
       ))}
-      {/* frente: casquilho do veio e dois furos de fixação (M2) */}
+      {/* frente: ressalto estampado, casquilho de bronze do veio, dois furos de fixação (M2) e
+          as duas janelas de ventilação */}
+      <Cyl r={0.5} h={0.04} pos={[0.02, AY, 0]} rot={rotX} color="#c4c9ce" metal={0.8} rough={0.32} seg={28} />
       <Cyl r={0.33} h={0.14} pos={[0.07, AY, 0]} rot={rotX} color="#b9bfc4" metal={0.8} rough={0.35} seg={24} />
+      <Cyl r={0.16} h={0.03} pos={[0.15, AY, 0]} rot={rotX} color={BRASS} metal={0.9} rough={0.3} seg={16} />
       {[-1, 1].map((s) => (
         <Cyl key={s} r={0.09} h={0.02} pos={[0.005, AY, s * 0.6]} rot={rotX} color="#222" seg={12} />
+      ))}
+      {[-1, 1].map((s) => (
+        <Box key={`v${s}`} size={[0.02, 0.12, 0.3]} pos={[0.004, AY + s * 0.5, 0]} color="#1a1c1e" />
       ))}
       {/* tampa de plástico preta (um pouco mais pequena que a lata) */}
       <mesh geometry={canGeo(canR - 0.04, flat - 0.04, capL, 0.04)} material={mat('#151515', 0, 0.55)} position={[-canL, AY, 0]} castShadow />
       <Cyl r={0.3} h={0.12} pos={[-canL - capL - 0.05, AY, 0]} rot={rotX} color="#b9bfc4" metal={0.8} rough={0.35} seg={20} />
+      {/* furos de ventilação da tampa (vê-se o escuro lá dentro) */}
+      {[-1, 1].map((s) => (
+        <Box key={`c${s}`} size={[0.02, 0.18, 0.12]} pos={[-canL - capL - 0.001, AY + s * 0.45, 0.25]} color="#050505" />
+      ))}
       {/* marca de polaridade (ponto vermelho junto ao M+) */}
       <Cyl r={0.07} h={0.02} pos={[-canL - capL - 0.005, AY + 0.35, -tabZ + 0.1]} rot={rotX} color="#e53935" seg={12} />
       {/* terminais de latão com furo para soldar o fio */}

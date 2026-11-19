@@ -14,12 +14,12 @@ function def(type) {
   const g = RELAY_BOARD[type]
   const ids = ['GND', ...Array.from({ length: g.n }, (_, i) => `IN${i + 1}`), 'VCC']
   const zH = g.d / 2 - 0.35 // barra de pinos na borda de baixo (+z)
-  const zT = -g.d / 2 + 0.45 // bornes na borda de cima (−z)
+  const zT = -g.d / 2 + 0.45 // bornes na borda de cima (−z); o fio entra pela boca (−z), a 3,8 mm da placa
   const pins = ids.map((id, i) => ({ id, pos: [(i - (ids.length - 1) / 2) * PITCH, 0.3, zH], kind: id === 'GND' ? 'gnd' : id === 'VCC' ? 'pwr' : 'in' }))
   for (let k = 0; k < g.n; k++) {
     const x = relayX(g, k)
     ;['NO', 'COM', 'NC'].forEach((t, j) =>
-      pins.push({ id: `${t}${k + 1}`, label: `${t}${k + 1} (${t === 'NO' ? 'normalmente aberto' : t === 'NC' ? 'normalmente fechado' : 'comum'})`, pos: [x + (j - 1) * 0.5, 1.0, zT], kind: 'pass', conn: 'screw', dir: [0, 0, -1] }),
+      pins.push({ id: `${t}${k + 1}`, label: `${t}${k + 1} (${t === 'NO' ? 'normalmente aberto' : t === 'NC' ? 'normalmente fechado' : 'comum'})`, pos: [x + (j - 1) * 0.5, 0.54, zT], kind: 'pass', conn: 'screw', dir: [0, 0, -1] }),
     )
   }
   return {

@@ -5,7 +5,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ZoomIn, ZoomOut, Scan } from 'lucide-react'
 import { Button, ButtonGroup, Tooltip } from '@heroui/react'
 import { useStore } from '../../contexts/store.js'
-import { DEFS, PITCH_PX, view2dInfo, pins2dLocal, pin2dWorld, rot2d, pinLabel, shortName, fmtOhms } from '@shared/components.js'
+import { DEFS, PITCH_PX, S2D, view2dInfo, pins2dLocal, pin2dWorld, rot2d, pinLabel, shortName, fmtOhms } from '@shared/components.js'
+import { BOARD_BUTTONS, boardButtonAt, boardButtonInput } from '@shared/boardButtons.js'
 import { plugOverlaps } from '@shared/netlist.js'
 import { physicalPlugs } from '@shared/seating.js'
 import { resistorBands } from '../three/models.jsx'
@@ -50,6 +51,7 @@ function LiveOverlay({ part, info, tele }) {
         {UI.Overlay2D && <UI.Overlay2D part={part} info={info} live={tele.live?.[part.id]} input={inp} />}
         {ia?.kind === 'toggle' && <InputBadge info={info} text={inp.on ? 'LIGADO' : 'desligado'} dark={!inp.on} />}
         {ia?.kind === 'press' && inp.pressed && <InputBadge info={info} text={ia.label || 'ATIVO'} />}
+        {ia?.off && inp.off && <InputBadge info={info} text={ia.off} />}
         {ia?.kind === 'slider' && <InputBadge info={info} text={`${fmtInput(ia, inp.value)}`} />}
       </>
     )
@@ -236,9 +238,21 @@ export function Circuit2D() {
     if (e.button !== 0) return
     e.stopPropagation()
     if (mode === 'sim') {
+      // botões da placa (RESET/EN, BOOT, BOOTSEL): clique no sítio do botão na imagem da placa
+      const info = BOARD_BUTTONS[part.type] && view2dInfo(part.type)
+      if (info?.view === 'top') {
+        const [wx, wy] = toWorld(e.clientX, e.clientY)
+        const [lx, ly] = rot2d([wx - part.sch.x, wy - part.sch.y], -(part.sch.rot || 0))
+        const b = boardButtonAt(part.type, lx / S2D + info.center[0], ly / S2D + info.center[2])
+        if (b) {
+          setInput(part.id, boardButtonInput(b))
+          svg.current.setPointerCapture(e.pointerId)
+          return
+        }
+      }
       if (part.type === 'button') pressButton(part.id)
       const ia = DEFS[part.type].interactive
-      if (ia?.kind === 'press') pressButton(part.id)
+      if (ia?.kind === 'press' && !info) pressButton(part.id)
       if (ia?.kind === 'toggle') setInput(part.id, { on: !simRef.inputs[part.id]?.on })
       if (ia?.kind === 'joystick') {
         // manípulo: arrastar inclina (no referencial da peça, que pode estar rodada); premir = SW

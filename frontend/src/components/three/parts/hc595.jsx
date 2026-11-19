@@ -1,33 +1,10 @@
-// 74HC595 em DIP-16: corpo preto com entalhe à esquerda (−x) e 16 pernas.
-import { Box, Cyl, Leg, useLabel } from '../kit.jsx'
+// 74HC595 em DIP-16 (SN74HC595N): corpo de epóxi com entalhe à esquerda (−x), 16 pernas e a
+// marcação real gravada a laser (o encapsulamento está em _dip.jsx).
+import { Dip } from './_dip.jsx'
 import def from '@shared/parts/hc595.js'
 
-const BODY = { w: 2.0, d: 0.65, y0: 0.12, h: 0.33 }
-const TOP = BODY.y0 + BODY.h
-
 function Model() {
-  const label = useLabel([{ text: '74HC595', font: 'bold 92px Arial' }], 512, 128)
-  return (
-    <group>
-      {def.pins.map((p) => {
-        const s = Math.sign(p.pos[2])
-        return (
-          <group key={p.id}>
-            <Leg from={p.pos} to={[p.pos[0], BODY.y0 + 0.12, p.pos[2]]} r={0.025} />
-            <Box size={[0.1, 0.03, 0.08]} pos={[p.pos[0], BODY.y0 + 0.12, s * (BODY.d / 2 + 0.03)]} color="#c9c9c9" metal={0.8} rough={0.3} />
-          </group>
-        )
-      })}
-      <Box size={[BODY.w, BODY.h, BODY.d]} pos={[0, BODY.y0 + BODY.h / 2, 0]} color="#1a1a1a" rough={0.55} />
-      {/* entalhe e ponto do pino 1 */}
-      <Cyl r={0.1} h={0.02} pos={[-BODY.w / 2 + 0.02, TOP + 0.001, 0]} color="#050505" seg={20} />
-      <Cyl r={0.05} h={0.01} pos={[-BODY.w / 2 + 0.2, TOP + 0.001, 0.18]} color="#3a3a3a" seg={16} />
-      <mesh position={[0.08, TOP + 0.003, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[1.3, 0.32]} />
-        <meshBasicMaterial map={label} transparent color="#d8d8d8" />
-      </mesh>
-    </group>
-  )
+  return <Dip pins={def.pins} len={def.size[0]} w={def.size[2]} text="SN74HC595N" code="ZCF347  E4" />
 }
 
 export default { type: 'hc595', Model }

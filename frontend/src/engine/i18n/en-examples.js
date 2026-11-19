@@ -116,6 +116,7 @@ export const EXAMPLE_NAMES_EN = {
   humanoide: 'Humanoid robot (waves and walks, 14 servos)',
   rodasGrandes: 'Robot with large printed wheels (avoids obstacles)',
   salaComandoIr: 'Room with an IR remote: TV, light, fan and doorbell',
+  camaraEsp32: 'Camera on the ESP32: brightness and darkest line (esp_camera.h)',
   seguidorSolar: 'Solar tracker: a panel on a servo follows the sun',
   mostradorCorreiaGt2: 'GT2 belt dial (TT motor with encoder, 20:60)',
   lcd20x4Paralelo: 'Parallel 20×4 LCD (LiquidCrystal)',

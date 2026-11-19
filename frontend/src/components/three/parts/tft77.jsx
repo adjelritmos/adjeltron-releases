@@ -1,9 +1,9 @@
 // TFT ST7735 1,8" (placa vermelha com leitor de cartões) e ST7789 1,54" IPS. A imagem chega em
 // live.fb (RLE [n, rgb565]) só após cada alteração: guarda-se num canvas por peça.
-import { Box, Pcb, HeaderPins, Cyl, useLabel } from '../kit.jsx'
+import { Box, Pcb, HeaderPins } from '../kit.jsx'
 import defs, { TFT77 } from '@shared/parts/tft77.js'
 import { rectOf } from './_groupA.jsx'
-import { screen, decode565 } from './_gDisplays.jsx'
+import { screen, decode565, DisplayPanel, MountHoles, SolderPads } from './_gDisplays.jsx'
 
 const scr = screen({
   init(e) {
@@ -49,36 +49,25 @@ const scr = screen({
 function make(def) {
   const g = TFT77[def.type]
   const A = g.act
-  const aw = A.x[1] - A.x[0]
-  const ad = A.z[1] - A.z[0]
-  const ax = (A.x[0] + A.x[1]) / 2
-  const az = (A.z[0] + A.z[1]) / 2
   const is35 = def.type === 'st7735'
+  // vidro do painel: ST7735 1,8" (34 × 45,8 mm, saliência do lado dos pinos, +z); ST7789 1,54"
+  // (31,5 × 33,7 mm, saliência do lado dos pinos, −z)
+  const PANEL = is35 ? { x: [-1.69, 1.69], z: [-2.25, 2.33] } : { x: [-1.565, 1.565], z: [-1.62, 1.75] }
   function Model({ part }) {
     const tex = scr.useTex(part.id, g.tw, g.th)
-    const label = useLabel([{ text: is35 ? '1.8" TFT SPI 128x160' : '1.54" IPS 240x240', font: 'bold 44px Arial' }], 512, 64)
     return (
       <group>
-        <Pcb size={[g.L, 0.16, g.D]} color={is35 ? '#c62828' : '#16407a'} />
-        {/* moldura + vidro + imagem */}
-        <Box size={[aw + 0.3, 0.3, ad + (is35 ? 0.75 : 0.35)]} pos={[ax, 0.31, az + (is35 ? 0.2 : 0.08)]} color="#141414" rough={0.35} />
-        <mesh position={[ax, 0.462, az]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[aw, ad]} />
-          <meshBasicMaterial map={tex} toneMapped={false} />
-        </mesh>
+        <Pcb size={[g.L, 0.16, g.D]} color={is35 ? '#c62828' : '#16407a'} holes={false} />
+        {is35 && <MountHoles pts={[[-1.4, -2.5], [1.4, -2.5], [-1.4, 2.5], [1.4, 2.5]]} y={0.16} r={0.14} ring={0.23} />}
+        {/* painel TFT: tabuleiro metálico da retroiluminação, vidro, saliência com o CI e imagem */}
+        <DisplayPanel glass={PANEL} act={A} y0={0.17} h={0.29} tex={tex} side="#cfd3d6" sideMetal={1} ledge={is35 ? 1 : -1} />
         {is35 && (
           <>
-            {/* leitor de cartões SD por baixo da ponta oposta aos pinos */}
+            {/* leitor de cartões SD por baixo da ponta oposta aos pinos e os seus 4 furos */}
             <Box size={[2.4, 0.18, 0.7]} pos={[0, -0.09, -2.35]} color="#b8bcc2" metal={0.7} rough={0.35} />
-            {[-0.38, -0.13, 0.13, 0.38].map((x) => (
-              <Cyl key={x} r={0.07} h={0.02} pos={[x, 0.17, -2.6]} color="#c9a227" metal={0.8} seg={10} />
-            ))}
+            <SolderPads pts={[-0.38, -0.13, 0.13, 0.38].map((x) => [x, -2.6])} y={0.16} r={0.075} blob={false} square0 />
           </>
         )}
-        <mesh position={[0, 0.165, is35 ? 2.2 : -1.38]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[g.L * 0.8, 0.2]} />
-          <meshBasicMaterial map={label} transparent />
-        </mesh>
         <HeaderPins pins={def.pins} base={0} />
       </group>
     )

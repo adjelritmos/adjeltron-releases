@@ -1,5 +1,6 @@
 // Display de 4 dígitos com TM1637: live.d = 4 bytes de segmentos (bit 7 do dígito 1 = dois pontos).
 import { Box, Pcb, HeaderPins } from '../kit.jsx'
+import { MountHoles, PinColumn } from './_gDisplays.jsx'
 import def from '@shared/parts/tm1637.js'
 import { LED_HEX, drawDigit, SvgDigit, useLiveTexture, FacePlane, rectOf } from './_groupA.jsx'
 
@@ -26,15 +27,20 @@ function draw(color) {
   }
 }
 
+// módulo azul de 42 × 24 mm: display de 0,36" com dois pontos (caixa branca, face preta),
+// furos M2 nos cantos, barra de 4 pinos e a serigrafia CLK/DIO/VCC/GND
 function Model({ part }) {
   const color = LED_HEX[part.config?.color] || LED_HEX.red
   const tex = useLiveTexture(part.id, 512, 212, draw(color))
   const cx = (FACE.x[0] + FACE.x[1]) / 2
   return (
     <group>
-      <Pcb size={[4.2, 0.16, 2.4]} color="#1f5f9f" />
-      <Box size={[3.05, 0.72, 1.4]} pos={[cx, 0.16 + 0.36, 0]} color="#e9e9e9" rough={0.5} />
+      <Pcb size={[4.2, 0.16, 2.4]} color="#1f5f9f" holes={false} />
+      <MountHoles pts={[[-1.9, -0.95], [-1.9, 0.95], [1.62, -0.95], [1.62, 0.95]]} y={0.16} r={0.11} ring={0.19} />
+      <Box size={[3.05, 0.72, 1.4]} pos={[cx, 0.16 + 0.36, 0]} color="#ebe9e4" rough={0.55} />
+      <Box size={[3.03, 0.004, 1.38]} pos={[cx, 0.881, 0]} color="#111111" rough={0.75} />
       <FacePlane tex={tex} w={FACE.x[1] - FACE.x[0]} d={FACE.z[1] - FACE.z[0]} pos={[cx, 0.885, 0]} />
+      <PinColumn zs={def.pins.map((p) => p.pos[2])} names={def.pins.map((p) => p.id)} x={1.5} y={0.162} w={0.34} h={0.09} />
       <HeaderPins pins={def.pins} base={0} up={0.45} />
     </group>
   )

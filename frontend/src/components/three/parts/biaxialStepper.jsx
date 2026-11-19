@@ -1,7 +1,10 @@
-// Motor de passo biaxial: corpo de 42 mm, dois veios concêntricos com ponteiros —
-// exterior (motor 1, ponteiro curto vermelho) e interior (motor 2, ponteiro comprido branco).
-import { Box, Cyl, RBox, Pcb, HeaderPins, Leg, useFrame, useRef, liveOf, D2R } from '../kit.jsx'
+// Motor de passo biaxial (corpo NEMA 17 de 42 mm, curto): tampas de alumínio de cantos
+// chanfrados, pacote de chapas, ressalto de centragem e dois veios concêntricos com ponteiros —
+// exterior (tubo de latão, motor 1, ponteiro curto vermelho) e interior (aço, motor 2, ponteiro
+// comprido branco). Ficha JST de 8 vias de lado e o cabo até à placa de ligação.
+import { Box, Cyl, Pcb, HeaderPins, Leg, METAL, useFrame, useRef, liveOf, D2R } from '../kit.jsx'
 import def from '@shared/parts/biaxialStepper.js'
+import { NemaBody, NemaPlug } from './nema17.jsx'
 
 const WIRES = ['#e53935', '#1e63d6', '#2e9d3a', '#1a1a1a']
 
@@ -15,27 +18,27 @@ function Model({ part }) {
   })
   return (
     <group>
-      <RBox size={[4.2, 0.6, 4.2]} r={0.25} pos={[0, 0.3, 0]} color="#c3c7cc" metal={0.8} rough={0.35} />
-      <RBox size={[4.1, 1.9, 4.1]} r={0.3} pos={[0, 1.55, 0]} color="#1c1c1c" rough={0.6} />
-      <RBox size={[4.2, 0.5, 4.2]} r={0.25} pos={[0, 2.75, 0]} color="#c3c7cc" metal={0.8} rough={0.35} />
-      {[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz], i) => (
-        <Cyl key={i} r={0.2} h={0.06} pos={[sx * 1.55, 3.02, sz * 1.55]} color="#2a2a2a" seg={16} />
-      ))}
-      <Cyl r={0.9} h={0.18} pos={[0, 3.09, 0]} color="#d0d4d8" metal={0.85} rough={0.3} seg={40} />
-      {/* veio exterior (tubo) + ponteiro curto */}
+      <NemaBody h={3.0} cap={0.55} s={4.2} label={false} />
+      {/* ressalto de centragem e casquilho do veio exterior */}
+      <Cyl r={0.9} h={0.18} pos={[0, 3.09, 0]} color="#d0d4d8" metal={0.9} rough={0.28} seg={40} />
+      <Cyl r={0.42} h={0.03} pos={[0, 3.19, 0]} color="#7d8288" metal={1} rough={0.35} seg={24} />
+      {/* veio exterior (tubo de latão) + ponteiro curto */}
       <group ref={outer}>
-        <Cyl r={0.32} h={0.55} pos={[0, 3.45, 0]} color="#b8bcc0" metal={0.9} rough={0.25} />
-        <Box size={[0.22, 0.08, 1.5]} pos={[0, 3.62, -0.7]} color="#e53935" />
-        <Cyl r={0.36} h={0.08} pos={[0, 3.62, 0]} color="#e53935" />
+        <Cyl r={0.32} h={0.55} pos={[0, 3.45, 0]} color={METAL.brass} metal={1} rough={0.28} />
+        <Cyl r={0.36} h={0.08} pos={[0, 3.62, 0]} color="#e53935" rough={0.45} />
+        <Box size={[0.22, 0.08, 1.5]} pos={[0, 3.62, -0.7]} color="#e53935" rough={0.45} />
+        <Cyl r={0.08} h={0.09} pos={[0, 3.62, -1.3]} color="#c62828" rough={0.45} seg={12} />
       </group>
-      {/* veio interior + ponteiro comprido */}
+      {/* veio interior (aço) + ponteiro comprido */}
       <group ref={inner}>
-        <Cyl r={0.15} h={0.6} pos={[0, 3.9, 0]} color="#eef0f2" metal={0.95} rough={0.2} />
-        <Box size={[0.14, 0.06, 2.2]} pos={[0, 3.95, -1.0]} color="#f5f5f5" />
+        <Cyl r={0.15} h={0.6} pos={[0, 3.9, 0]} color="#eef0f2" metal={1} rough={0.2} />
+        <Box size={[0.14, 0.06, 2.2]} pos={[0, 3.95, -1.0]} color="#f5f5f5" rough={0.45} />
+        <Box size={[0.14, 0.06, 0.5]} pos={[0, 3.95, 0.3]} color="#f5f5f5" rough={0.45} />
         <Cyl r={0.22} h={0.08} pos={[0, 3.98, 0]} color="#222" />
+        <Cyl r={0.06} h={0.02} pos={[0, 4.03, 0]} color={METAL.nickel} metal={1} rough={0.3} seg={10} />
       </group>
-      {/* conector e cabos (8 fios) até à placa de ligação */}
-      <Box size={[0.4, 0.55, 2.3]} pos={[-2.2, 0.55, 0]} color="#f2f2f2" />
+      {/* ficha e cabos (8 fios) até à placa de ligação */}
+      <NemaPlug w={2.3} />
       {def.pins.map((p, i) => (
         <Leg key={p.id} from={[-2.35, 0.55, p.pos[2] * 0.9]} to={[-2.4, 0.2, p.pos[2]]} r={0.04} color={WIRES[i % 4]} />
       ))}

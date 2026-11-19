@@ -1,6 +1,7 @@
 // Telhado de duas águas: duas abas com a cobertura em textura (telha lusa, ardósia, chapa),
-// cumeeira de telhas, testeiras no beiral e sótão fechado (empenas) por baixo.
-import { Box, Cyl, mat } from '../kit.jsx'
+// cumeeira de telhões de barro (ou capa angular de zinco), testeiras no beiral, guarda-ventos
+// nas empenas e sótão fechado (empenas) por baixo.
+import { Box, Cyl, geo, mat, mergedGeo, THREE } from '../kit.jsx'
 import { matColor } from '@shared/parts/_materials.js'
 import { ACAB_COR } from '@shared/parts/_casa.js'
 import { roofDims, roofUnder } from '@shared/parts/telhado.js'
@@ -12,13 +13,27 @@ const shadeHex = (hex, k) => {
   return `#${[(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => f(v).toString(16).padStart(2, '0')).join('')}`
 }
 
+// telhões da cumeeira: meias-canas cónicas (a boca mais larga sobre o telhão seguinte), ao longo de x
+function ridgeTiles(l) {
+  const n = Math.max(1, Math.ceil(l / 3))
+  const tl = l / n
+  return mergedGeo(`telhaoRidge${l}`, () => {
+    // meia-cana virada para cima (θ de 0 a π dá a metade +x, que a rotação leva para +y)
+    const g = geo(`telhao${tl}`, () => new THREE.CylinderGeometry(0.41, 0.47, tl + 0.12, 14, 1, true, 0, Math.PI).rotateZ(Math.PI / 2))
+    return Array.from({ length: n }, (_, i) => [g, [-l / 2 + (i + 0.5) * tl, 0, 0]])
+  })
+}
+
 function Water({ d, cover, base }) {
   return (
     <group position={[0, d.h, 0]} rotation={[d.a, 0, 0]}>
       <Box size={[d.l, d.t, d.Ls + 0.05]} pos={[0, -d.t / 2, d.Ls / 2]} color={base} rough={0.8} />
       <mesh geometry={faceGeo([-d.l / 2, -d.Ls, d.l / 2, 0])} material={cover} position={[0, 0.012, 0]} rotation={[-Math.PI / 2, 0, 0]} castShadow receiveShadow />
-      {/* testeira (tábua do beiral) */}
+      {/* testeira (tábua do beiral) e guarda-ventos nas empenas */}
       <Box size={[d.l, d.t + 0.3, 0.15]} pos={[0, -d.t / 2 - 0.1, d.Ls - 0.05]} color="#f1ede4" rough={0.6} />
+      {[-1, 1].map((s) => (
+        <Box key={s} size={[0.15, d.t + 0.3, d.Ls - 0.1]} pos={[s * (d.l / 2 - 0.075), -d.t / 2 - 0.1, d.Ls / 2 - 0.05]} color="#f1ede4" rough={0.6} />
+      ))}
     </group>
   )
 }
@@ -40,8 +55,18 @@ function Model({ part }) {
       <group rotation={[0, Math.PI, 0]}>
         <Water d={d} cover={cover} base={base} />
       </group>
-      {/* cumeeira */}
-      <Cyl r={0.42} h={d.l + 0.1} pos={[0, d.h + 0.02, 0]} rot={[0, 0, Math.PI / 2]} color={kind === 'material' ? base : shadeHex(col, -0.12)} rough={0.75} seg={16} />
+      {/* cumeeira: telhões de barro sobrepostos (assentes em argamassa), ou capa angular de
+          zinco/chapa na ardósia e no painel; lisa no material simples */}
+      {kind === 'telha' ? (
+        <group>
+          <Cyl r={0.36} h={d.l} pos={[0, d.h - 0.02, 0]} rot={[0, 0, Math.PI / 2]} color="#cfc6b6" rough={0.9} seg={12} />
+          <mesh geometry={ridgeTiles(d.l)} position={[0, d.h + 0.02, 0]} material={mat(shadeHex(col, -0.12), 0, 0.72, { side: THREE.DoubleSide })} castShadow />
+        </group>
+      ) : kind === 'ardosia' || kind === 'chapa' ? (
+        <mesh geometry={prismXGeo([[-0.5, -0.1], [0, 0.32], [0.5, -0.1], [0.44, -0.15], [0, 0.24], [-0.44, -0.15]], d.l + 0.1)} position={[0, d.h, 0]} material={mat(kind === 'chapa' ? shadeHex(col, -0.1) : '#8d9399', 0.7, 0.4)} castShadow />
+      ) : (
+        <Cyl r={0.42} h={d.l + 0.1} pos={[0, d.h + 0.02, 0]} rot={[0, 0, Math.PI / 2]} color={kind === 'material' ? base : shadeHex(col, -0.12)} rough={0.75} seg={16} />
+      )}
       {c.sotao !== false && a > 0.2 && len > 0.2 && (
         <mesh geometry={prismXGeo([[-a, 0], [a, 0], [a, yA], [0, yR], [-a, yA]], len)} material={mat(c.corEmpena || '#efe6d2', 0, 0.92)} castShadow receiveShadow />
       )}

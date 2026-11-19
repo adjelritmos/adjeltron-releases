@@ -1,6 +1,6 @@
 {
   "name": "adjeltron",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Site do adjeltron (web): bancada virtual de eletrónica e robótica — circuitos 2D, mecânica 3D com física, código Arduino (C/C++) e Fogu",
   "private": true,
   "type": "module",

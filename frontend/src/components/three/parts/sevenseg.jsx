@@ -1,5 +1,6 @@
 // Display de 7 segmentos (1 dígito). Segmentos desenhados numa textura de canvas.
 import { Box, Leg, PITCH } from '../kit.jsx'
+import { SideText } from './_gDisplays.jsx'
 import { LED_HEX, drawDigit, SvgDigit, useLiveTexture, FacePlane, rectOf } from './_groupA.jsx'
 
 // face com o dígito (cm): largura 1,1 × altura 1,74
@@ -14,6 +15,8 @@ function draw(color) {
   }
 }
 
+// 5161AS (12,6 × 19 × 8 mm): caixa refletora de plástico branco, face pintada de preto com os
+// segmentos difusores, marcação de lado e as 10 pernas (2 filas de 5)
 function Model({ part }) {
   const color = LED_HEX[part.config?.color] || LED_HEX.red
   const tex = useLiveTexture(part.id, 128, 200, draw(color))
@@ -21,8 +24,10 @@ function Model({ part }) {
   return (
     <group>
       {[-0.762, 0.762].flatMap((z) => xs.map((x) => <Leg key={`${x}${z}`} from={[x, 0, z]} to={[x, 0.12, z]} />))}
-      <Box size={[1.26, H - 0.1, 1.9]} pos={[0, 0.1 + (H - 0.1) / 2, 0]} color="#1b1b1b" rough={0.8} />
-      <FacePlane tex={tex} w={FACE.x[1] - FACE.x[0]} d={FACE.z[1] - FACE.z[0]} pos={[0, H + 0.002, 0]} />
+      <Box size={[1.26, H - 0.1, 1.9]} pos={[0, 0.1 + (H - 0.1) / 2, 0]} color="#ebe9e4" rough={0.55} />
+      <Box size={[1.24, 0.004, 1.88]} pos={[0, H + 0.001, 0]} color="#111111" rough={0.75} />
+      <FacePlane tex={tex} w={FACE.x[1] - FACE.x[0]} d={FACE.z[1] - FACE.z[0]} pos={[0, H + 0.004, 0]} />
+      <SideText text="5161AS" pos={[0, 0.45, 0.951]} w={0.75} color="#666" />
     </group>
   )
 }

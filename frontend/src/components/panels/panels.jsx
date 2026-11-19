@@ -916,8 +916,8 @@ export function SimControls() {
                 </span>
               </Switch>
             )
-          if (ia.kind === 'press')
-            return (
+          if (ia.kind === 'press') {
+            const on = (
               <Button
                 key={p.id}
                 size="sm"
@@ -929,6 +929,17 @@ export function SimControls() {
                 {name} · {ia.label || t('panels.activate')} {t('panels.hold')}
               </Button>
             )
+            if (!ia.off) return on
+            // peça com um segundo botão (OFF da Pico4Drive)
+            return (
+              <div key={p.id} className="flex flex-col gap-1">
+                {on}
+                <Button size="sm" variant={inp.off ? 'solid' : 'bordered'} color={inp.off ? 'danger' : 'default'} onPressStart={() => setInput(p.id, { off: true })} onPressEnd={() => setInput(p.id, { off: false })}>
+                  {name} · {ia.off} {t('panels.hold')}
+                </Button>
+              </div>
+            )
+          }
           if (ia.kind === 'joystick') return <JoystickPad key={p.id} part={p} name={name} />
           if (ia.kind === 'fields') return <FieldsControl key={p.id} part={p} name={name} ia={ia} />
           if (ia.kind === 'text') return <TextControl key={p.id} part={p} name={name} ia={ia} />

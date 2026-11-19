@@ -3,7 +3,7 @@
 // maxila em duas camadas de chapa unidas por espaçadores e parafusos Phillips, com as pontas
 // serrilhadas por dentro. A rotação das maxilas é a da física (clawJawAngle): a abertura entre
 // as pontas segue a usada para agarrar cubos.
-import { Box, Cyl, Leg, RBox, jawDeg, useFrame, useRef, THREE, mat, geo } from '../kit.jsx'
+import { Box, Cyl, Leg, RBox, jawDeg, useFrame, useRef, THREE, mat } from '../kit.jsx'
 import { DEFS } from '@shared/components.js'
 import { CLAW, clawJawAngle, clawOpening } from '@shared/parts/garraMetal.js'
 import { extrudeXZ, holeCircle, holeSlot, rrect, mdfMats, Phillips } from './_mdfKit.jsx'
@@ -62,7 +62,7 @@ function Model({ part }) {
     if (jaws[0].current) jaws[0].current.rotation.y = a
     if (jaws[1].current) jaws[1].current.rotation.y = -a
   })
-  const [bx, by] = CLAW.base
+  const [, by] = CLAW.base
   const pins = DEFS.garraMetal.pins
   const cy = pins[0].pos[1]
   const jawG = extrudeXZ('garraMetalJaw', T, jawShape)

@@ -1,6 +1,8 @@
-// HC-05: placa base azul de 44 × 16 mm com a placa Bluetooth verde (27 × 13 mm, antena
-// impressa em ziguezague na ponta), LED de estado, botão EN e 6 pinos.
-import { Box, Cyl, HeaderPins, useCanvasTexture, GlowLed, liveOf } from '../kit.jsx'
+// HC-05 (base ZS-040): placa base azul de 44 × 16 mm com a placa Bluetooth verde acastelada
+// (27 × 13 × 0,8 mm: CSR BC417, flash de 8 Mbit, cristal de 26 MHz e antena impressa em
+// ziguezague na ponta), regulador de 3,3 V, LED de estado, botão EN (KEY) e 6 pinos.
+import { HeaderPins, useCanvasTexture, GlowLed, liveOf, TactSwitch, Chip, mergedGeo, geo, mat, METAL, THREE } from '../kit.jsx'
+import { PcbPlate, Smds, Sot23, SmdCrystal, MarkText } from './_boardKit.jsx'
 import def from '@shared/parts/hc05.js'
 import { Glow2D } from './group-c-ui.jsx'
 
@@ -10,6 +12,22 @@ const T = 0.16
 const TOP = T
 const PX = 120
 const LED = [-1.2, TOP + 0.04, 0.55]
+const BT = { x: 0.75, l: 2.7, d: 1.3, t: 0.08 }
+// almofadas acasteladas (13 de cada lado + 8 na ponta de trás) soldadas à placa base
+const castGeo = () =>
+  mergedGeo('hc05-cast', () => {
+    const b = geo('gull', () => new THREE.BoxGeometry(1, 1, 1))
+    const out = []
+    for (let i = 0; i < 13; i++)
+      for (const s of [-1, 1]) {
+        const x = BT.x - BT.l / 2 + 0.2 + i * 0.15
+        out.push([b, [x, TOP + BT.t / 2, s * (BT.d / 2 + 0.003)], [0, 0, 0], [0.08, BT.t + 0.01, 0.01]])
+        out.push([b, [x, TOP + 0.006, s * (BT.d / 2 + 0.04)], [0, 0, 0], [0.09, 0.012, 0.08]])
+      }
+    return out
+  })
+const SMDS = [[-1.55, -0.45, 1, 'c'], [-1.55, 0.05, 1, 'C'], [-1.2, 0.3, 0, 'r'], [-0.85, -0.55, 1, 'r'], [-1.72, 0.5, 1, 'r']]
+const BT_SMDS = [[0.25, 0.45, 0, 'c'], [0.25, -0.45, 0, 'c'], [1.35, 0.45, 1, 'c'], [-0.4, 0.4, 1, 'r'], [-0.4, -0.4, 1, 'r'], [1.45, -0.35, 1, 'c']]
 
 function Model({ part }) {
   const silk = useCanvasTexture(
@@ -43,39 +61,41 @@ function Model({ part }) {
         ctx.lineTo(i % 2 ? x0 : w - 10, y)
       }
       ctx.stroke()
-      // contactos castelados nas bordas
-      ctx.fillStyle = '#d4af37'
-      for (let i = 0; i < 13; i++) {
-        ctx.fillRect(8 + i * 26, 0, 10, 8)
-        ctx.fillRect(8 + i * 26, h - 8, 10, 8)
-      }
       ctx.fillStyle = '#fff'
       ctx.font = 'bold 22px Arial'
-      ctx.fillText('HC-05', 150, h / 2 + 8)
+      ctx.fillText('HC-05', 300, h - 26)
     },
-    ['hc05-bt'],
+    ['hc05-bt-2'],
     512,
     246,
   )
   return (
     <group>
-      <Box size={[L, T, D]} pos={[0, T / 2, 0]} color="#1f4fb5" rough={0.5} />
+      <PcbPlate id="hc05" w={L} d={D} t={T} y={0} r={0.06} color="#1f4fb5" />
       <mesh position={[0, TOP + 0.003, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[L, D]} />
         <meshBasicMaterial map={silk} transparent />
       </mesh>
-      {/* placa Bluetooth (BC417) */}
-      <Box size={[2.7, 0.08, 1.3]} pos={[0.75, TOP + 0.04, 0]} color="#1d7a3a" rough={0.5} />
-      <mesh position={[0.75, TOP + 0.082, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[2.7, 1.3]} />
+      {/* placa Bluetooth acastelada: BC417, flash, cristal de 26 MHz e passivos */}
+      <group position={[BT.x, 0, 0]}>
+        <PcbPlate id="hc05-bt" w={BT.l} d={BT.d} t={BT.t} y={TOP} r={0.02} color="#1d7a3a" />
+      </group>
+      <mesh position={[BT.x, TOP + BT.t + 0.002, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[BT.l, BT.d]} />
         <meshBasicMaterial map={bt} />
       </mesh>
-      <Box size={[0.7, 0.1, 0.7]} pos={[0.2, TOP + 0.13, 0]} color="#151515" rough={0.4} />
-      <Box size={[0.45, 0.08, 0.35]} pos={[0.95, TOP + 0.12, 0.2]} color="#151515" rough={0.4} />
-      {/* regulador de 3,3 V e botão EN (KEY) */}
-      <Box size={[0.3, 0.12, 0.35]} pos={[-1.15, TOP + 0.06, -0.4]} color="#1a1a1a" />
-      <Box size={[0.3, 0.12, 0.3]} pos={[-0.85, TOP + 0.06, 0.45]} color="#c9c9c9" metal={0.6} />
-      <Cyl r={0.08} h={0.08} pos={[-0.85, TOP + 0.16, 0.45]} color="#222" seg={12} />
+      <mesh geometry={castGeo()} material={mat(METAL.tin, 1, 0.28)} />
+      <group position={[0, BT.t, 0]}>
+        <Chip pos={[0.2, TOP, 0]} size={[0.62, 0.1, 0.62]} pkg="qfn" n={10} />
+        <MarkText lines={[{ text: 'CSR', font: 'bold 60px Arial', y: 44 }, { text: 'BC417', font: 'bold 52px Arial', y: 98 }]} px={[256, 128]} pos={[0.2, TOP + 0.102, 0]} w={0.5} d={0.25} />
+        <Chip pos={[0.95, TOP, 0.12]} size={[0.5, 0.1, 0.42]} n={6} label="EN29LV" />
+        <SmdCrystal pos={[0.95, TOP, -0.38]} l={0.32} w={0.25} label="26.000" />
+        <Smds id="hc05-bt" y={TOP} items={BT_SMDS} />
+      </group>
+      {/* regulador de 3,3 V (SOT-23-5), passivos e botão EN (KEY) */}
+      <Sot23 pos={[-1.15, TOP, -0.4]} n={5} label="662K" />
+      <Smds id="hc05" y={TOP} items={SMDS} />
+      <TactSwitch pos={[-0.85, TOP, 0.45]} size={0.3} round={false} cap="#1d1d1d" />
       <GlowLed pos={LED} color="#ff3030" read={() => (liveOf(part.id)?.led ? 1 : 0)} />
       <HeaderPins pins={def.pins} base={TOP} />
     </group>

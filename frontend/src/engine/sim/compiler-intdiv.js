@@ -300,3 +300,141 @@ export function intDivision(src) {
   }
   return out
 }
+
+// ---------- literais de carácter em contas e comparações ----------
+// O tradutor guarda os `char` como texto de 1 letra (c == 'a', texto += c), mas em C um literal
+// 'A' é o número 65 — e Serial.read(), peek(), s[i] num int… dão números. Misturar os dois em JS
+// falha: `x == 'A'` com x = 65 é falso e `Serial.read() - '0'` dá 52 em vez de 4. Aqui, quando
+// um literal 'x' é operando de == != < > <= >= - * % (ou de + com um inteiro), passa a ser o
+// código (65) e o outro operando é envolvido em __ord() (texto de 1 letra → código; número fica).
+// `switch` com `case 'x':` passa a comparar códigos: switch (__ord(e)) { case 65: … }.
+const ESC = { n: 10, r: 13, t: 9, 0: 0, '\\': 92, "'": 39, '"': 34, a: 7, b: 8, f: 12, v: 11, '?': 63 }
+function charCode(lit) {
+  const b = lit.slice(1, -1)
+  if (b.length === 1 && b !== '\\') return b.charCodeAt(0)
+  if (b[0] !== '\\') return null
+  if (b.length === 2 && b[1] in ESC) return ESC[b[1]]
+  let m = b.match(/^\\x([0-9a-fA-F]{1,2})$/)
+  if (m) return parseInt(m[1], 16)
+  m = b.match(/^\\([0-7]{1,3})$/)
+  return m ? parseInt(m[1], 8) : null
+}
+const CMP_OPS = ['==', '!=', '<=', '>=', '<', '>', '-', '*', '%', '+']
+// operador binário no fim de `out` (antes do literal): devolve { op, at } ou null
+function opBefore(out) {
+  let j = out.length
+  while (j > 0 && /\s/.test(out[j - 1])) j--
+  for (const op of CMP_OPS) {
+    if (!out.slice(0, j).endsWith(op)) continue
+    const at = j - op.length
+    const prev = out[at - 1]
+    // não é: <<, >>, ->, --, ++, +=, -=, *=, ==… parcial, ponteiro/unário
+    if (op.length === 1 && (prev === op || prev === '=' || prev === '!' || (op === '>' && prev === '-') || (op === '<' && prev === '<'))) return null
+    let p = at - 1
+    while (p >= 0 && /\s/.test(out[p])) p--
+    if (p < 0 || !(isWord(out[p]) || out[p] === ')' || out[p] === ']' || out[p] === "'")) return null // unário (-'0', *p)
+    return { op, at }
+  }
+  return null
+}
+function opAfter(s, k) {
+  while (k < s.length && /\s/.test(s[k])) k++
+  for (const op of CMP_OPS) {
+    if (!s.startsWith(op, k)) continue
+    const nx = s[k + op.length]
+    if (op.length === 1 && (nx === '=' || nx === op || (op === '-' && nx === '>'))) return null
+    return { op, end: k + op.length }
+  }
+  return null
+}
+
+export function charOperands(src) {
+  if (!src.includes("'")) return src
+  const T = collectTypes(src)
+  let out = ''
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i]
+    if (c === '"') {
+      const e = skipString(src, i)
+      out += src.slice(i, e + 1)
+      i = e
+      continue
+    }
+    if (c === '#') {
+      const e = src.indexOf('\n', i)
+      const stop = e < 0 ? src.length : e
+      out += src.slice(i, stop)
+      i = stop - 1
+      continue
+    }
+    if (c !== "'" || isWord(src[i - 1])) {
+      out += c
+      continue
+    }
+    const e = skipString(src, i)
+    const lit = src.slice(i, e + 1)
+    const code = charCode(lit)
+    if (code == null) {
+      out += lit
+      i = e
+      continue
+    }
+    // literal à direita do operador: a OP 'x'
+    const b = opBefore(out)
+    if (b) {
+      const L = leftOperand(out, b.at)
+      const left = L >= 0 ? out.slice(L, b.at).trim() : ''
+      if (left && (b.op !== '+' || isIntExpr(left, T))) {
+        out = `${out.slice(0, L)}${/^'/.test(left) ? left : `__ord(${left})`} ${b.op} ${code}`
+        i = e
+        continue
+      }
+    }
+    // literal à esquerda: 'x' OP b
+    const a = opAfter(src, e + 1)
+    if (a) {
+      const rEnd = rightOperand(src, a.end - 1)
+      const right = rEnd >= 0 ? src.slice(a.end, rEnd).trim() : ''
+      if (right && (a.op !== '+' || isIntExpr(right, T))) {
+        const rc = /^'[^']*'$/.test(right) ? charCode(right) : null
+        out += `${code} ${a.op} ${rc != null ? rc : `__ord(${right})`}`
+        i = rEnd - 1
+        continue
+      }
+    }
+    out += lit
+    i = e
+  }
+  // a OP 'x' com a também literal ficou 'y' OP 65: o literal da esquerda vira código
+  out = out.replace(/(^|[^\w'])('(?:[^'\\]|\\[^']{1,3}|\\')') (==|!=|<=|>=|<|>|-|\*|%|\+) (\d+)/g, (all, pre, l, op, n) => {
+    const k = charCode(l)
+    return k == null ? all : `${pre}${k} ${op} ${n}`
+  })
+  // switch com case 'x':
+  if (/\bcase\s*'/.test(out)) {
+    out = out.replace(/\bcase\s*('(?:[^'\\]|\\[^']{1,3}|\\')')\s*:/g, (all, l) => {
+      const k = charCode(l)
+      return k == null ? all : `case ${k}:`
+    })
+    let r = ''
+    let k = 0
+    const re = /\bswitch\s*\(/g
+    let m
+    while ((m = re.exec(out))) {
+      const open = m.index + m[0].length - 1
+      let d = 0
+      let p = open
+      for (; p < out.length; p++) {
+        if (out[p] === '"' || out[p] === "'") p = skipString(out, p)
+        else if (out[p] === '(') d++
+        else if (out[p] === ')' && --d === 0) break
+      }
+      if (p >= out.length) break
+      r += `${out.slice(k, open + 1)}__ord(${out.slice(open + 1, p)})`
+      k = p
+      re.lastIndex = p
+    }
+    out = r + out.slice(k)
+  }
+  return out
+}

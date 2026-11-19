@@ -1,85 +1,71 @@
-// Módulo GY-521 (MPU-6050): placa azul com o chip QFN, regulador, LED e as setas dos eixos.
-import { Box, Cyl, HeaderPins, useCanvasTexture, GlowLed, liveOf } from '../kit.jsx'
+// Módulo GY-521 (MPU-6050): placa azul de 21 × 16 mm com os 2 furos Ø 3 mm metalizados, o
+// MPU-6050 em QFN-24 (4 × 4 mm) com a marcação, o regulador 662K (SOT-23), o LED de
+// alimentação, os passivos 0603, a serigrafia dos pinos e as setas dos eixos X/Y.
+import { Chip, HeaderPins, liveOf } from '../kit.jsx'
 import def from '@shared/parts/mpu6050.js'
 import { Badge, fmt } from './group-c-ui.jsx'
+import { ShapedPcb, Art, SmdField, SmdLed, Sot23 } from './mq2.jsx'
 
 const W = 1.6 // x
 const D = 2.1 // z
 const T = 0.16
 const BY = 0.02
 const TOP = BY + T
-const PX = 240
+const HOLES = [
+  [0.55, -0.75, 0.15],
+  [0.55, 0.75, 0.15],
+]
+
+// serigrafia: nomes dos pinos, setas X (frente, +x) / Y (esquerda, −z), nome da placa
+function draw(p) {
+  for (const [x, z] of HOLES) p.ring(x, z, 0.15, 0.27, '#d6b25a')
+  for (const pin of def.pins) p.text(pin.id, -0.36, pin.pos[2], 0.1, { rot: -Math.PI / 2 })
+  const [ox, oz] = [-0.15, 0.78]
+  const arrow = (x1, z1, hx, hz) => {
+    p.line([[ox, oz], [x1, z1]], { lw: 0.025 })
+    p.ctx.fillStyle = '#f2f2ee'
+    p.ctx.beginPath()
+    p.ctx.moveTo(p.X(x1 + hx * 0.09), p.Y(z1 + hz * 0.09))
+    p.ctx.lineTo(p.X(x1 - hz * 0.05), p.Y(z1 - hx * 0.05))
+    p.ctx.lineTo(p.X(x1 + hz * 0.05), p.Y(z1 + hx * 0.05))
+    p.ctx.fill()
+  }
+  arrow(0.12, oz, 1, 0)
+  arrow(ox, 0.48, 0, -1)
+  p.text('X', 0.16, oz + 0.14, 0.12)
+  p.text('Y', ox - 0.12, 0.45, 0.12)
+  p.text('GY-521', 0.72, 0, 0.12, { rot: -Math.PI / 2 })
+  // contorno do chip e marca do pino 1
+  p.rect(0.25, 0.05, 0.52, 0.52, { lw: 0.012 })
+  p.circle(0.0, -0.2, 0.025, { fill: '#f2f2ee', stroke: null })
+  p.text('U1', 0.42, 0.4, 0.08)
+  p.text('LED', 0.25, -0.47, 0.07)
+}
 
 function Model({ part }) {
-  // serigrafia: nomes dos pinos e setas X (frente) / Y (esquerda)
-  const silk = useCanvasTexture(
-    (ctx, w, h) => {
-      const at = (x, z) => [(x + W / 2) * PX, (z + D / 2) * PX]
-      ctx.fillStyle = '#fff'
-      ctx.strokeStyle = '#fff'
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.font = 'bold 19px Arial'
-      for (const p of def.pins) {
-        const [x, y] = at(p.pos[0] + 0.3, p.pos[2])
-        ctx.save()
-        ctx.translate(x, y)
-        ctx.rotate(-Math.PI / 2)
-        ctx.fillText(p.id, 0, 0)
-        ctx.restore()
-      }
-      ctx.lineWidth = 6
-      const [ox, oy] = at(0.35, 0.45)
-      // seta X (+x)
-      ctx.beginPath()
-      ctx.moveTo(ox, oy)
-      ctx.lineTo(ox + 0.5 * PX, oy)
-      ctx.stroke()
-      ctx.beginPath()
-      ctx.moveTo(ox + 0.6 * PX, oy)
-      ctx.lineTo(ox + 0.45 * PX, oy - 14)
-      ctx.lineTo(ox + 0.45 * PX, oy + 14)
-      ctx.fill()
-      // seta Y (−z, para a esquerda)
-      ctx.beginPath()
-      ctx.moveTo(ox, oy)
-      ctx.lineTo(ox, oy - 0.5 * PX)
-      ctx.stroke()
-      ctx.beginPath()
-      ctx.moveTo(ox, oy - 0.6 * PX)
-      ctx.lineTo(ox - 14, oy - 0.45 * PX)
-      ctx.lineTo(ox + 14, oy - 0.45 * PX)
-      ctx.fill()
-      ctx.font = 'bold 30px Arial'
-      ctx.fillText('X', ox + 0.55 * PX, oy + 34)
-      ctx.fillText('Y', ox - 34, oy - 0.55 * PX)
-      ctx.font = 'bold 24px Arial'
-      const [lx, ly] = at(0.25, -0.62)
-      ctx.fillText('GY-521', lx, ly)
-    },
-    ['gy521'],
-    Math.round(W * PX),
-    Math.round(D * PX),
-  )
   return (
     <group>
-      <Box size={[W, T, D]} pos={[0, BY + T / 2, 0]} color="#1f4fb5" rough={0.5} />
-      <mesh position={[0, TOP + 0.003, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[W, D]} />
-        <meshBasicMaterial map={silk} transparent />
-      </mesh>
-      {/* chip MPU-6050 (QFN 4×4 mm) e componentes */}
-      <Box size={[0.42, 0.09, 0.42]} pos={[0.25, TOP + 0.045, 0.05]} color="#151515" rough={0.4} />
-      <Cyl r={0.03} h={0.01} pos={[0.1, TOP + 0.095, -0.1]} color="#888" seg={8} />
-      <Box size={[0.3, 0.12, 0.16]} pos={[0.5, TOP + 0.06, 0.7]} color="#222" />
-      {[[-0.05, 0.6], [0.05, -0.45], [0.55, -0.4]].map(([x, z], i) => (
-        <Box key={i} size={[0.1, 0.06, 0.06]} pos={[x, TOP + 0.03, z]} color="#b98b4e" />
-      ))}
-      {/* furos de fixação */}
-      {[-0.75, 0.75].map((z) => (
-        <Cyl key={z} r={0.15} h={T + 0.01} pos={[0.55, BY + T / 2, z]} color="#d9b54a" metal={0.8} rough={0.3} seg={16} />
-      ))}
-      <GlowLed pos={[0.6, TOP + 0.04, 0.3]} size={[0.1, 0.06, 0.06]} color="#ff3b30" read={() => (liveOf(part.id)?.powered ? 1 : 0)} />
+      <ShapedPcb id="gy521" pos={[0, BY, 0]} w={W} d={D} t={T} r={0.06} holes={HOLES} color="#1f4fb5" />
+      <Art id="gy521" w={W} d={D} pos={[0, TOP + 0.0015, 0]} draw={draw} />
+      {/* MPU-6050 (QFN-24 4 × 4 × 0,9 mm) */}
+      <Chip pos={[0.25, TOP, 0.05]} size={[0.4, 0.09, 0.4]} pkg="qfn" n={6} label="MPU-6050" labelColor="#9a9a9a" />
+      {/* regulador 662K (3,3 V) */}
+      <Sot23 pos={[-0.05, TOP, -0.7]} />
+      <SmdLed pos={[0.05, TOP, -0.35]} size={[0.16, 0.07, 0.08]} color="#ff3b30" read={() => (liveOf(part.id)?.powered ? 1 : 0)} />
+      <SmdField
+        id="gy521"
+        y={TOP}
+        items={[
+          [0.3, -0.32, 0, 'c'],
+          [0.6, -0.2, Math.PI / 2, 'c'],
+          [0.6, 0.3, Math.PI / 2],
+          [-0.15, 0.1, Math.PI / 2, 'c'],
+          [-0.15, -0.25, Math.PI / 2],
+          [0.15, -0.95, 0, 'c'],
+          [0.15, 0.42, 0],
+          [-0.12, -0.98, 0],
+        ]}
+      />
       <HeaderPins pins={def.pins} base={TOP} up={0.57} />
     </group>
   )

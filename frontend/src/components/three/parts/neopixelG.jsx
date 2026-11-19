@@ -1,6 +1,7 @@
 // LEDs WS2812B do grupo G: LED de 5 mm (cúpula difusa, 4 pernas), módulo de 1 LED e
 // matrizes 8×8 / 16×16 (textura com um quadrado 5050 por LED). Cores em live.c (0xRRGGBB).
-import { PixelHalo, pixelLevel, Box, Cyl, Leg, Pcb, HeaderPins, useFrame, useRef, THREE, liveOf } from '../kit.jsx'
+import { PixelHalo, pixelLevel, Box, Leg, Pcb, HeaderPins, SilkText, geo, useFrame, useRef, THREE, liveOf } from '../kit.jsx'
+import { Ws2812, SmdParts, MountHoles, drawWs2812 } from './_gDisplays.jsx'
 import { useLiveTexture, FacePlane } from './_groupA.jsx'
 import { neopixelLed as ledDef, neopixelModule as modDef } from '@shared/parts/neopixelSingle.js'
 import { neopixelMatrix8 as m8Def, neopixelMatrix16 as m16Def, MATRIX_GEOM, matrixXY } from '@shared/parts/neopixelMatrix.js'
@@ -55,21 +56,29 @@ function GlowLight({ id, pos, i = null }) {
 }
 
 // ---------- LED de 5 mm ----------
+// PL9823-F5: corpo de resina difusa (rebordo Ø 5,8 mm com o lado plano, cilindro Ø 5 mm e cúpula),
+// o CI e a armação vistos lá dentro e as 4 pernas
+const ledLathe = () =>
+  geo('pl9823Body', () => {
+    const pts = [[0, 0], [0.29, 0], [0.29, 0.1], [0.25, 0.1], [0.25, 0.58]] // rebordo, cilindro
+    for (let k = 1; k <= 8; k++) {
+      const a = (k / 8) * (Math.PI / 2)
+      pts.push([0.25 * Math.cos(a), 0.58 + 0.25 * Math.sin(a)])
+    }
+    return new THREE.LatheGeometry(pts.map(([x, y]) => new THREE.Vector2(Math.max(x, 0.0001), y)), 28)
+  })
 function LedModel({ part }) {
   const mat = useLedMat(part.id, 0, '#eeeeea')
   return (
     <group>
       {ledDef.pins.map((p, k) => (
-        <Leg key={p.id} from={p.pos} to={[(k - 1.5) * 0.1, 0.15, 0]} r={0.022} />
+        <Leg key={p.id} from={p.pos} to={[(k - 1.5) * 0.1, 0.25, 0]} r={0.022} />
       ))}
-      <Cyl r={0.29} h={0.1} pos={[0, 0.2, 0]} color="#e6e6e0" rough={0.3} />
-      <mesh position={[0, 0.5, 0]}>
-        <cylinderGeometry args={[0.25, 0.25, 0.56, 24]} />
-        <meshStandardMaterial ref={mat} color="#eeeeea" transparent opacity={0.92} roughness={0.35} toneMapped={false} />
-      </mesh>
-      <mesh position={[0, 0.78, 0]}>
-        <sphereGeometry args={[0.25, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2]} />
-        <meshStandardMaterial color="#f4f4ef" transparent opacity={0.6} roughness={0.3} />
+      {/* armação e CI dentro da resina */}
+      <Box size={[0.24, 0.05, 0.04]} pos={[0, 0.42, 0]} color="#b9a15a" metal={0.8} rough={0.35} />
+      <Box size={[0.08, 0.03, 0.08]} pos={[0, 0.46, 0]} color="#1a1a1a" />
+      <mesh position={[0, 0.15, 0]} geometry={ledLathe()}>
+        <meshStandardMaterial ref={mat} color="#eeeeea" transparent opacity={0.88} roughness={0.42} toneMapped={false} />
       </mesh>
       <GlowLight id={part.id} i={0} pos={[0, 1.1, 0]} />
       <PixelHalo id={part.id} i={0} pos={[0, 0.7, 0]} size={2} />
@@ -78,20 +87,17 @@ function LedModel({ part }) {
 }
 
 // ---------- módulo de 1 LED ----------
+// placa preta de 16 × 12 mm: WS2812B 5050, condensador de 100 nF, entrada GND/VCC/DIN e saída
 function ModuleModel({ part }) {
-  const mat = useLedMat(part.id, 0, '#e8e4da')
   return (
     <group>
       <Pcb size={[1.6, 0.16, 1.2]} color="#151515" holes={false} />
-      <Box size={[0.5, 0.15, 0.5]} pos={[0, 0.235, 0]} color="#f2f2f2" />
-      <mesh position={[0, 0.315, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[0.2, 20]} />
-        <meshStandardMaterial ref={mat} color="#e8e4da" emissive="#000" toneMapped={false} />
-      </mesh>
-      <Box size={[0.2, 0.08, 0.12]} pos={[0.1, 0.2, 0.42]} color="#b08d57" />
+      <Ws2812 id={part.id} i={0} pos={[0, 0.16, 0]} halo={1.4} />
+      <SmdParts list={[[0.1, 0.42, 0, 'c']]} y={0.16} />
+      <SilkText text="DIN" pos={[-0.4, 0.162, 0.48]} w={0.22} d={0.08} font="bold 40px Arial" px={[96, 36]} />
+      <SilkText text="DOUT" pos={[0.4, 0.162, -0.48]} w={0.26} d={0.08} font="bold 40px Arial" px={[112, 36]} />
       <HeaderPins pins={modDef.pins} base={0} up={0.45} />
       <GlowLight id={part.id} i={0} pos={[0, 0.9, 0]} />
-      <PixelHalo id={part.id} i={0} pos={[0, 0.45, 0]} size={1.4} />
     </group>
   )
 }
@@ -108,33 +114,47 @@ function makeMatrix(def) {
   const g = MATRIX_GEOM[type]
   const N = g.n
   const half = g.board / 2
-  const PX = N === 8 ? 32 : 24 // pixels de textura por LED
+  const PX = N === 8 ? 48 : 32 // pixels de textura por LED
+  // placa com os WS2812B 5050 (moldura branca, janela, armação e chips) e o condensador de 100 nF
+  // de cada um (todos iguais: não depende da ordem da cadeia)
+  let ART = null
+  const boardArt = (w) => {
+    if (ART?.width === w) return ART
+    ART = Object.assign(document.createElement('canvas'), { width: w, height: w })
+    const x = ART.getContext('2d')
+    x.fillStyle = N === 8 ? '#111' : '#0b0b0b'
+    x.fillRect(0, 0, w, w)
+    const cell = w / N
+    const sq = cell * (N === 8 ? 0.62 : 0.5)
+    for (let r = 0; r < N; r++)
+      for (let c = 0; c < N; c++) {
+        const cx = c * cell + cell / 2
+        const cy = r * cell + cell / 2
+        drawWs2812(x, sq, cx, cy)
+        x.fillStyle = '#b38b5d'
+        x.fillRect(cx + sq / 2 + cell * 0.06, cy - cell * 0.05, cell * 0.08, cell * 0.1)
+      }
+    return ART
+  }
   const draw = (layout) => (ctx, w, h, L) => {
-    ctx.fillStyle = N === 8 ? '#111' : '#0b0b0b'
-    ctx.fillRect(0, 0, w, h)
     const cell = w / N
     const cs = L?.c || []
+    const sq = cell * (N === 8 ? 0.62 : 0.5)
+    // a placa com os LEDs apagados desenha-se uma vez (os acesos vão por cima)
+    ctx.drawImage(boardArt(w), 0, 0)
     for (let i = 0; i < N * N; i++) {
       const [x, y] = matrixXY(i, N, layout)
       const cx = x * cell + cell / 2
       const cy = y * cell + cell / 2
-      const sq = cell * (N === 8 ? 0.62 : 0.5)
-      ctx.fillStyle = '#e4e1d6'
-      ctx.fillRect(cx - sq / 2, cy - sq / 2, sq, sq)
       const col = shown(cs[i] ?? 0)
       if (col) {
         ctx.shadowColor = col
         ctx.shadowBlur = cell * 0.45
         ctx.fillStyle = col
         ctx.beginPath()
-        ctx.arc(cx, cy, sq * 0.46, 0, Math.PI * 2)
+        ctx.arc(cx, cy, sq * 0.42, 0, Math.PI * 2)
         ctx.fill()
         ctx.shadowBlur = 0
-      } else {
-        ctx.fillStyle = '#cfcabb'
-        ctx.beginPath()
-        ctx.arc(cx, cy, sq * 0.3, 0, Math.PI * 2)
-        ctx.fill()
       }
     }
   }
@@ -144,7 +164,8 @@ function makeMatrix(def) {
     const area = N * g.pitch
     return (
       <group>
-        <Pcb size={[g.board, N === 8 ? 0.16 : 0.08, g.board + 0.9]} pos={[0, 0, 0.45]} color={N === 8 ? '#141414' : '#0d0d0d'} holes={N === 8} />
+        <Pcb size={[g.board, N === 8 ? 0.16 : 0.08, g.board + 0.9]} pos={[0, 0, 0.45]} color={N === 8 ? '#141414' : '#0d0d0d'} holes={false} />
+        {N === 8 && <MountHoles pts={[[-half + 0.3, half + 0.6], [half - 0.3, half + 0.6]]} y={0.16} r={0.15} ring={0.24} />}
         <FacePlane tex={tex} w={area} d={area} pos={[0, (N === 8 ? 0.16 : 0.08) + 0.012, 0]} />
         {/* seta de dados (DIN → DOUT) e barra de pinos */}
         <Box size={[g.board - 0.6, 0.02, 0.06]} pos={[0, N === 8 ? 0.17 : 0.09, half + 0.12]} color="#6b6b6b" />
