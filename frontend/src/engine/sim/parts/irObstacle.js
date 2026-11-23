@@ -8,7 +8,7 @@ export default {
   stamp({ cond, src, s, vd }) {
     if (s.damaged) return cond('VCC', 'GND', 1e-9)
     cond('VCC', 'GND', 1 / 250) // LED IR ~20 mA
-    if (!s.powered) return
+    if (!s.powered) return cond('OUT', 'VCC', 1e-4) // só o pull-up de 10 kΩ, para a linha VCC (≈ 0 V sem alimentação)
     src('OUT', 'GND', s.hit ? 0 : vd('VCC', 'GND'), s.hit ? 50 : 10000)
   },
   update(ctx) {

@@ -18,8 +18,8 @@ export default {
   // suporte com as pilhas (os fios soltos não colidem)
   collider: { size: [6.4, 1.6, 6.2], pos: [0, 0.8, 0] },
   pins: [
-    { id: '+', label: '+ (vermelho)', pos: [7.0, 0.2, -0.4], kind: 'bat+', conn: 'solder', dir: [1, 0, 0] },
-    { id: '-', label: '− (preto)', pos: [7.0, 0.2, 0.4], kind: 'bat-', conn: 'solder', dir: [1, 0, 0] },
+    { id: '+', label: '+ (vermelho)', pos: [4.1, 0.2, -0.4], kind: 'bat+', conn: 'solder', dir: [1, 0, 0] },
+    { id: '-', label: '− (preto)', pos: [4.1, 0.2, 0.4], kind: 'bat-', conn: 'solder', dir: [1, 0, 0] },
   ],
   config: { charge: 90, pilhas: 'alcalinas', color: '#2e7d32' },
   fields: [

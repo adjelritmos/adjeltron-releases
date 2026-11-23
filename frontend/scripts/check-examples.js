@@ -33,6 +33,7 @@ Bun.plugin({
 })
 const WR = await import(R + '/frontend/src/functions/wireRoute.js')
 const WE = await import(R + '/frontend/src/functions/wireEnv.js')
+const TOT = {}
 const FT = await import(R + '/frontend/node_modules/three/build/three.module.js')
 
 // --engine=avr: Uno/Nano/Mega com emulação real (arduino-cli + avr8js); as outras placas no tradutor
@@ -281,6 +282,11 @@ for (const [key, P] of Object.entries(PRESETS)) {
   const notes = []
   const knownBugs = []
   const { parts, wires } = P.build()
+  // --i2c-header: os fios do Uno em A4/A5 passam para os pinos SDA/SCL do cabeçalho (têm de dar o mesmo)
+  if (process.argv.includes('--i2c-header')) {
+    const unos = new Set(parts.filter((p) => p.type === 'arduino').map((p) => p.id))
+    for (const w of wires) for (const e of [w.a, w.b]) if (unos.has(e.part) && (e.pin === 'A4' || e.pin === 'A5')) e.pin = e.pin === 'A4' ? 'SDA' : 'SCL'
+  }
   const st = getTrackModel(P.track).start
   for (const q of parts) if (q.type === 'chassis' && !q.parent) Object.assign(q, { pos: [st.x, 0, st.z], rot: [0, (st.theta * 180) / Math.PI, 0] })
   const byId = Object.fromEntries(parts.map((p) => [p.id, p]))
@@ -352,12 +358,16 @@ for (const [key, P] of Object.entries(PRESETS)) {
   if (cross) (PRESETS[key]?.tidy ? problems : notes).push(`fios por cima de peças: ${crossList.join('; ')}`)
   // fios 3D que entram em peças (caixas de colisão), com o percurso automático do frontend
   let hit3d = 0
+  let wireCross = 0
   {
     const WM = worldMatrices(parts)
     const W = new Map([...WM].map(([k, m]) => [k, new FT.Matrix4().fromArray(m.elements)]))
     const roots = WE.rootsOf(parts)
     const envs = new Map()
     const list = []
+    // fios entre si: cada fio afasta-se dos traçados antes dele (faixas, por contentor)
+    const lanesOf = new Map()
+    const strict = new Map()
     for (const wr of wires) {
       const ra = roots.get(wr.a.part)
       const rb = roots.get(wr.b.part)
@@ -372,14 +382,31 @@ for (const [key, P] of Object.entries(PRESETS)) {
       if (!A || !B) continue
       const seed = [...wr.id].reduce((t, ch) => t + ch.charCodeAt(0), 0)
       const via = wr.pts3d?.length ? wr.pts3d.map((v) => new FT.Vector3(...v)) : null
-      const rt = WR.routeWire(A, B, { obstacles: env.obstacles, plates: env.plates, seed, via, ground: c ? null : 0 })
+      if (!lanesOf.has(c)) lanesOf.set(c, new WR.Lanes())
+      const lanes = lanesOf.get(c)
+      const rt = WR.routeWire(A, B, { obstacles: env.obstacles, plates: env.plates, seed, via, ground: c ? null : 0, lanes: process.env.NOLANES ? null : lanes })
       const hits = WR.wireHits(rt.points, env.obstacles, rt.ends)
+      // fios que se atravessam: eixos a menos de um diâmetro (2·raio − 0,1 mm) de um fio anterior
+      const smp = WR.sampleWire(rt.points, rt.ends)
+      if (!strict.has(c)) strict.set(c, [])
+      const prev = strict.get(c)
+      for (const o of prev) {
+        if (smp.hi.x < o.lo.x || smp.lo.x > o.hi.x || smp.hi.y < o.lo.y || smp.lo.y > o.hi.y || smp.hi.z < o.lo.z || smp.lo.z > o.hi.z) continue
+        // fios no mesmo pino tocam-se junto à ficha (inevitável): só conta longe dele
+        const shared = rt.ends.filter((e) => o.ends.some((f) => f.tip.distanceTo(e.tip) < 0.05)).map((e) => e.tip)
+        if (smp.pts.some((p) => shared.every((t) => t.distanceTo(p) > 1.2) && o.pts.some((q) => q.distanceTo(p) < 2 * WR.WIRE_R - 0.01))) wireCross++
+      }
+      smp.ends = rt.ends
+      prev.push(smp)
+      lanes.add(smp, rt)
       if (hits.size) {
         hit3d++
         list.push(`${wr.a.part}.${wr.a.pin}→${wr.b.part}.${wr.b.pin} em ${[...hits].map(([k, d]) => `${k} (${d.toFixed(2)} cm)`).join(', ')}`)
       }
     }
     if (hit3d) notes.push(`fios 3D dentro de peças: ${list.join('; ')}`)
+    if (wireCross) notes.push(`fios 3D a atravessar outros fios: ${wireCross}`)
+    TOT.wireCross = (TOT.wireCross || 0) + wireCross
   }
   // chão: nenhuma peça abaixo de y = 0 na pose de construção (colisores ou caixa da peça)
   {
@@ -485,6 +512,7 @@ for (const [key, P] of Object.entries(PRESETS)) {
 console.log()
 console.table(rows)
 console.log('snippets:', Object.keys(CODE_SNIPPETS).length)
+console.log(`fios 3D a atravessar outros fios (pares): ${TOT.wireCross || 0}`)
 console.log(`fios 3D dentro de peças: ${rows.reduce((t, r) => t + r.fios3d, 0)} de ${rows.reduce((t, r) => t + r.wires, 0)}`)
 for (const eng of [...new Set(rows.map((r) => r.engine))]) {
   const rs = rows.filter((r) => r.engine === eng)

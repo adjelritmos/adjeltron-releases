@@ -19,7 +19,7 @@ import { hoistStaticLocals, outParams, declaredTypes, eepromTyped, RTOS_TYPES, m
 import { rawStrings, netTransforms, wrapNetBlocking } from './compiler-net.js'
 import { groupGTransforms } from './compiler-g.js'
 import { picoTransforms, picoLateTransforms } from './compiler-pico.js'
-import { intDivision, charOperands } from './compiler-intdiv.js'
+import { intDivision, floatNarrowing, printFloatBase, charOperands } from './compiler-intdiv.js'
 import { classTransforms, classSkeletons } from './compiler-classes.js'
 import { preprocess } from './compiler-pre.js'
 import * as i18n from '../../../../shared/i18n.js'
@@ -182,6 +182,32 @@ function refParams(s, TYPES) {
     })
     return changed ? `${name}(${out.join(',')})` : null
   })
+}
+
+// Referências locais de tipos simples (int &r = v;): como nos parâmetros por referência, r passa
+// a ser um objeto { v } com getter/setter para a variável original e, até ao fim do bloco, r → r.v.
+function localRefs(s, TYPES) {
+  const DECL = new RegExp(`(^|[;{}]\\s*)(?:(?:const|volatile)\\s+)*${TYPES}\\s*&\\s*(\\w+)\\s*=(?!=)\\s*([^;{}]+);`, 'm')
+  for (let n = 0; n < 500; n++) {
+    const m = s.match(DECL)
+    if (!m) break
+    const e = m[3].trim()
+    const obj = /^[A-Za-z_]\w*(\s*\[[^\]]*\]|\.\w+)*$/.test(e) ? `{ get v() { return ${e} }, set v(__v) { ${e} = __v } }` : `{ v: ${e} }`
+    const start = m.index + m[0].length
+    // fim do bloco onde a referência foi declarada
+    let depth = 0
+    let end = s.length
+    for (let i = start; i < s.length; i++) {
+      if (s[i] === '{') depth++
+      else if (s[i] === '}' && --depth < 0) {
+        end = i
+        break
+      }
+    }
+    const body = s.slice(start, end).replace(new RegExp(`(?<![\\w$.])${m[2]}\\b(?!\\s*:)`, 'g'), `${m[2]}.v`)
+    s = s.slice(0, m.index) + `${m[1]}let ${m[2]} = ${obj};` + body + s.slice(end)
+  }
+  return s
 }
 
 // parâmetros de uma função C++ para escolher a sobrecarga: tipo ('f' vírgula flutuante,
@@ -550,12 +576,51 @@ function splitShift(t) {
   return out.filter((x) => x.trim()).length ? out.filter((x) => x.trim()) : null
 }
 
+// `static` ao nível do ficheiro (fora de funções e classes) só dá ligação interna: no simulador
+// não muda nada, e tirá-lo deixa as declarações como as outras (`static Adafruit_ST7735 tft(...)`,
+// `static struct X {...} x;`, `static short n;`). Os `static` dentro de funções (persistem entre
+// chamadas) e de classes (membros da classe) ficam para os passos próprios.
+// registos das portas do ATmega328P (Uno/Nano): PORTx, DDRx e PINx (x = B, C, D) e os nomes dos
+// bits (PD2, PORTB5, DDD3, PIND2…). Leituras → __regR('PIN', 'D'); escritas (=, |=, &=, ^=) →
+// __regW('PORT', 'B', valor). O motor liga cada bit ao pino Arduino (PD0–7 = D0–7, PB0–5 =
+// D8–13, PC0–5 = A0–A5).
+function avrPortRegs(s) {
+  if (!/\b(?:PORT|DDR|PIN)[BCD]\b/.test(s)) return s
+  s = s.replace(/\b_BV\s*\(/g, '__BV(')
+  s = s.replace(/\b(?:P|PORT|DD|PIN)([BCD])([0-7])\b/g, '$2')
+  s = s.replace(/\b(PORT|DDR|PIN)([BCD])\s*(\|=|&=|\^=|=(?!=))\s*([^;]+);/g, (all, k, x, op, e) => (op === '=' ? `__regW('${k}', '${x}', (${e}));` : `__regW('${k}', '${x}', __regR('${k}', '${x}') ${op[0]} (${e}));`))
+  return s.replace(/\b(PORT|DDR|PIN)([BCD])\b/g, "__regR('$1', '$2')")
+}
+
+function fileScopeStatic(s) {
+  let out = ''
+  let depth = 0
+  let last = 0
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]
+    if (ch === '"' || ch === "'") {
+      for (i++; i < s.length && s[i] !== ch; i++) if (s[i] === '\\') i++
+      continue
+    }
+    if (ch === '{') depth++
+    else if (ch === '}') depth = Math.max(0, depth - 1)
+    else if (depth === 0 && ch === 's' && s.startsWith('static', i) && !/[\w$]/.test(s[i - 1] || '') && /\s/.test(s[i + 6] || '')) {
+      out += s.slice(last, i)
+      i += 6
+      while (/[ \t]/.test(s[i] || '')) i++
+      last = i
+      i--
+    }
+  }
+  return out + s.slice(last)
+}
+
 export function transpile(source, { classes = ['Servo'], defines = ['ARDUINO=10819'], libs = {} } = {}) {
   // (compiler-net.js: raw strings, String/char[], ArduinoJson, lambdas, tempo…)
   // class / struct / enum / typedef do próprio sketch (compiler-classes.js)
   const libClasses = classes
   // pré-processador: #include das bibliotecas do utilizador, #if/#ifdef, macros (compiler-pre.js)
-  const pre = preprocess(stripComments(rawStrings(source)), { defines, libs })
+  const pre = fileScopeStatic(preprocess(stripComments(rawStrings(source)), { defines, libs }))
   // <setjmp.h> (jmp_buf = int) e extern "C" (ligação de C, sem efeito no simulador)
   const fptr = fnPtrDecls(pre.replace(/\bjmp_buf\b/g, 'int').replace(/\bextern\s+"C"\s*(?!\{)/g, ''))
   const ct = classTransforms(altOperators(fptr.s), { TYPES, libClasses })
@@ -591,12 +656,16 @@ export function transpile(source, { classes = ['Servo'], defines = ['ARDUINO=108
   s = picoTransforms(s)
 
   // divisão inteira do C (7 / 2 = 3) — antes de os tipos e os casts desaparecerem
+  // int x = 3.7;  x = f * 2.5;  → trunca, como no C++ (compiler-intdiv.js)
+  s = printFloatBase(s)
+  s = floatNarrowing(s)
   s = intDivision(s)
   // 'A' em contas/comparações com números (Serial.read() == 'A', c - '0', switch com case 'x')
   s = charOperands(s)
 
   // pré-processador (PROGMEM não existe fora do AVR)
   s = s.replace(/\bPROGMEM\b/g, '')
+  s = avrPortRegs(s)
   // EEPROM.get/put precisam do tipo C da variável (antes de os tipos desaparecerem)
   s = eepromTyped(s, declaredTypes(s, TYPES))
   // atributos de ISR do ESP32/ESP8266 e tipos do FreeRTOS (handles = inteiros)
@@ -621,6 +690,9 @@ export function transpile(source, { classes = ['Servo'], defines = ['ARDUINO=108
     // ponteiros para objetos de biblioteca: camera_fb_t *fb = esp_camera_fb_get();  Servo *s = &a;
     // (o ponteiro é o próprio objeto; p->campo vira p.campo em compiler-classes.js)
     t = t.replace(new RegExp(`(^|[;{}(\\n]\\s*)(?:const\\s+)?(${C})\\s*\\*\\s*(\\w+)\\s*=(?!=)`, 'gm'), '$1let $3 =')
+    // referências locais a objetos: Adafruit_PWMServoDriver &p = lado < 0 ? pernaE : pernaD;
+    // (em JS a variável já é o próprio objeto)
+    t = t.replace(new RegExp(`(^|[;{}(\\n]\\s*)(?:const\\s+)?(${C})\\s*&\\s*(\\w+)\\s*=(?!=)`, 'gm'), '$1let $3 =')
     t = t.replace(new RegExp(`(^|[;{}\\n]\\s*)(?:const\\s+)?(${C})\\s*\\*\\s*(\\w+)\\s*;`, 'gm'), '$1let $3 = null;')
     // IPAddress ip = WiFi.localIP();  (tipos de biblioteca inicializados com uma expressão)
     t = t.replace(/\b(IPAddress|wl_status_t)\s+(\w+)\s*=/g, 'let $2 =')
@@ -633,6 +705,8 @@ export function transpile(source, { classes = ['Servo'], defines = ['ARDUINO=108
   s = s.replace(/([(,]\s*)&(?=[A-Za-z_])/g, '$1')
   // p = &objeto;  return &objeto;  (ponteiro = o próprio objeto)
   s = s.replace(/((?<![=!<>])=\s*|\breturn\s+)&(?=[A-Za-z_])/g, '$1')
+  // … = cond ? &a : &b;
+  s = s.replace(/([?:]\s*)&(?=[A-Za-z_])/g, '$1')
 
   // sizeof(tipo) -> tamanho na placa (int = 2 bytes no AVR, 4 no ESP32…)
   s = s.replace(new RegExp(`\\bsizeof\\s*\\(\\s*(${TYPES})\\s*\\)`, 'g'), (_, t) => `__sizeofT('${t.replace(/\s+/g, '_')}')`)
@@ -655,6 +729,8 @@ export function transpile(source, { classes = ['Servo'], defines = ['ARDUINO=108
   s = s.replace(new RegExp(`^\\s*(?:static\\s+|inline\\s+)*${TYPES}\\s*[*&]?\\s+\\w+\\s*\\([^)]*\\)\\s*;`, 'gm'), '')
   // parâmetros por referência (float &x) nas funções do sketch
   s = refParams(s, TYPES)
+  // referências locais de tipos simples (int &r = v;  float &x = tabela[i];)
+  s = localRefs(s, TYPES)
 
   // definições de funções
   const userFns = []
@@ -730,6 +806,8 @@ export function transpile(source, { classes = ['Servo'], defines = ['ARDUINO=108
   s = s.replace(/\b(0[xX][0-9a-fA-F]+|0[bB][01]+|\d+)(?:ULL|ull|LL|ll|UL|ul|LU|lu|L|l|U|u)\b/g, '$1')
   s = s.replace(/\b(\d+\.\d*|\.\d+)f\b/g, '$1')
   s = s.replace(/\bNULL\b/g, 'null')
+  // constantes binárias do Arduino (binary.h): B101 → 5, B10110000 → 176 (se o programa não declarar esse nome)
+  s = codeOnly(s, (t) => t.replace(/(?<![\w$.])B([01]{1,8})\b(?!\s*[(=])/g, (all, bits) => (new RegExp(`\\b(?:let|const|var|function\\*?|class)\\s+${all}\\b`).test(t) ? all : String(parseInt(bits, 2)))))
 
   s = instrumentLoops(s)
 

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ZoomIn, ZoomOut, Scan } from 'lucide-react'
 import { Button, ButtonGroup, Tooltip } from '@heroui/react'
 import { useStore } from '../../contexts/store.js'
+import { controlUnder, startControl, wheelControl } from '../../functions/partControls.js'
 import { DEFS, PITCH_PX, S2D, view2dInfo, pins2dLocal, pin2dWorld, rot2d, pinLabel, shortName, fmtOhms } from '@shared/components.js'
 import { BOARD_BUTTONS, boardButtonAt, boardButtonInput } from '@shared/boardButtons.js'
 import { plugOverlaps } from '@shared/netlist.js'
@@ -175,7 +176,19 @@ export function Circuit2D() {
   const under = (p) => DEFS[p.type]?.breadboard || Object.values(DEFS[p.type]?.mounts || {}).some((m) => m.socket)
   const ordered = [...drawable.filter(under), ...drawable.filter((p) => !under(p))]
 
+  // ponto do ecrã → controlo da peça (x, z no referencial da peça, nas vistas de cima)
+  const controlUnder2D = (part, cx, cy) => {
+    const info = view2dInfo(part.type)
+    if (info?.view !== 'top') return controlUnder(part, NaN, NaN)
+    const [wx, wy] = toWorld(cx, cy)
+    const [lx, ly] = rot2d([wx - part.sch.x, wy - part.sch.y], -(part.sch.rot || 0))
+    return controlUnder(part, lx / S2D + info.center[0], ly / S2D + info.center[2])
+  }
   const onWheel = (e) => {
+    // simulação: a roda sobre um manípulo regula-o em vez de fazer zoom
+    const pid = mode === 'sim' && e.target.closest?.('[data-pid]')?.dataset.pid
+    const wp = pid && parts.find((q) => q.id === pid)
+    if (wp && wheelControl(wp, controlUnder2D(wp, e.clientX, e.clientY), e)) return
     const [wx, wy] = toWorld(e.clientX, e.clientY)
     const z = Math.min(4, Math.max(0.2, view.zoom * Math.pow(1.0015, -e.deltaY)))
     // mantém o ponto sob o cursor
@@ -250,6 +263,12 @@ export function Circuit2D() {
           return
         }
       }
+      // manípulos e teclas (fonte, gerador, potenciómetros…): functions/partControls.js
+      const c = controlUnder2D(part, e.clientX, e.clientY)
+      if (c) {
+        startControl(part, c, e)
+        return
+      }
       if (part.type === 'button') pressButton(part.id)
       const ia = DEFS[part.type].interactive
       if (ia?.kind === 'press' && !info) pressButton(part.id)
@@ -267,7 +286,6 @@ export function Circuit2D() {
         })
         return
       }
-      if (part.type === 'pot') drag.current = { kind: 'pot', id: part.id, sy: e.clientY, v0: simRef.inputs[part.id]?.value ?? part.config.value ?? 0.5 }
       svg.current.setPointerCapture(e.pointerId)
       return
     }
@@ -332,7 +350,7 @@ export function Circuit2D() {
             const hit = p.type === 'led' ? LED_HIT : { x: -info.w / 2, y: -info.h / 2, w: info.w, h: info.h }
             return (
               <g key={p.id} transform={`translate(${p.sch.x},${p.sch.y}) rotate(${p.sch.rot || 0})`}>
-                <g onPointerDown={(e) => onPartDown(e, p)} style={{ cursor: mode === 'sim' ? (p.type === 'button' || p.type === 'pot' ? 'pointer' : 'default') : 'move' }} filter={DEFS[p.type]?.breadboard ? undefined : 'url(#shadow)'}>
+                <g data-pid={p.id} onPointerDown={(e) => onPartDown(e, p)} style={{ cursor: mode === 'sim' ? (p.type === 'button' || p.type === 'pot' || DEFS[p.type]?.controls || DEFS[p.type]?.interactive ? 'pointer' : 'default') : 'move' }} filter={DEFS[p.type]?.breadboard ? undefined : 'url(#shadow)'}>
                   <PartImage part={p} info={info} thumb={thumbs[p.type]} />
                   <rect x={hit.x} y={hit.y} width={hit.w} height={hit.h} fill="transparent" />
                 </g>

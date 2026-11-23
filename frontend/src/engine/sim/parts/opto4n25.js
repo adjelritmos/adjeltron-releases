@@ -1,5 +1,6 @@
 // 4N25: o mesmo modelo do PC817 (LED IR + fototransístor com CTR, três regiões) com o LED de
-// 1,2 V / máx. 60 mA, a base acessível (pino 6, com fuga para o emissor) e mensagens próprias.
+// 1,2 V / máx. 60 mA, a base acessível (pino 6: uma resistência — ou um curto — entre B e E desvia a fotocorrente e
+// baixa o CTR; ver icMax em pc817.js) e mensagens próprias.
 import pc817 from './pc817.js'
 import { boardIoOnNet } from './group-c-util.js'
 import * as i18n from '../../../../../shared/i18n.js'
@@ -8,6 +9,20 @@ export default {
   ...pc817,
   type: 'opto4n25',
   stamp(ctx) {
+    const { s, part, nets } = ctx
+    // resistência entre a base (pino 6) e o emissor: curto direto (0 Ω) ou resistências em paralelo;
+    // com a base solta fica undefined→null (CTR normal). As ligações não mudam durante a simulação.
+    if (s.rbe === undefined) {
+      const [nb, ne] = [nets.netOf(part.id, 'B'), nets.netOf(part.id, 'E')]
+      let g = 0
+      if (nb != null && ne != null && nb !== ne)
+        for (const q of nets.partsOnNet(nb)) {
+          if (q.type !== 'resistor') continue
+          const [a, b] = [nets.netOf(q.id, '1'), nets.netOf(q.id, '2')]
+          if ((a === nb && b === ne) || (a === ne && b === nb)) g += 1 / Math.max(0.1, q.config?.ohms ?? 220)
+        }
+      s.rbe = nb != null && nb === ne ? 0 : g > 0 ? 1 / g : null
+    }
     ctx.cond('B', 'E', 1e-9)
     pc817.stamp(ctx)
   },

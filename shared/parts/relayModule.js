@@ -27,7 +27,7 @@ function def(type) {
     name: `Placa de relés (${g.n} canais)`,
     short: `Relés ×${g.n}`,
     cat: 'output',
-    description: `${g.n} relés de 5 V (contactos 10 A / 250 V) com optoacoplador. Barra de pinos: GND → GND, VCC → 5V, IN1…IN${g.n} → pinos digitais. ATENÇÃO: estas placas são ativas a LOW — digitalWrite(pino, LOW) liga o relé (acende o LED do canal) e HIGH desliga; no setup() faça pinMode(pino, OUTPUT) e logo a seguir digitalWrite(pino, HIGH), para os relés não ligarem no arranque. Cada relé ligado gasta ~72 mA do VCC${g.n >= 4 ? ` (com os ${g.n} ligados ~${Math.round(g.n * 0.075 * 100) / 100} A: use uma fonte de 5 V externa no JD-VCC)` : ''}. Em cada canal: COM comum, NO ligado a COM com o relé ativo, NC ligado em repouso.`,
+    description: `${g.n} relés de 5 V (contactos 10 A / 250 V) com optoacoplador. Barra de pinos: GND → GND, VCC → 5V, IN1…IN${g.n} → pinos digitais. ATENÇÃO: estas placas são ativas a LOW — digitalWrite(pino, LOW) liga o relé (acende o LED do canal) e HIGH desliga; no setup() faça pinMode(pino, OUTPUT) e logo a seguir digitalWrite(pino, HIGH), para os relés não ligarem no arranque. Cada relé ligado gasta ~72 mA do VCC${g.n >= 4 ? ` (com os ${g.n} ligados ~${Math.round(g.n * 0.075 * 100) / 100} A: alimente o VCC por uma fonte de 5 V externa, com GND comum — nesta placa JD-VCC e VCC estão unidos pelo jumper)` : ''}. Em cada canal: COM comum, NO ligado a COM com o relé ativo, NC ligado em repouso.`,
     size: [g.w, 1.9, g.d],
     pins,
     config: { trigger: 'low' },

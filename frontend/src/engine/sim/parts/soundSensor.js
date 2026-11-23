@@ -9,7 +9,7 @@ export default analogModule({
   type: 'soundSensor',
   threshold: 0.53,
   load: 1 / 1250,
-  vmin: 3.3,
+  vmin: 3.0, // LM393: funciona a partir de ~3 V (o pino 3V3 com carga fica um pouco abaixo de 3,3 V)
   aoFrac: ({ s, vd }) => 0.5 + (s.wave ?? 0) / Math.max(1, vd('VCC', 'GND')),
   trigger: 'above',
   activeLow: false, // DO = HIGH com som

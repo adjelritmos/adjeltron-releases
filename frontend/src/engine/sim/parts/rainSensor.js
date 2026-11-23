@@ -6,7 +6,7 @@ export default analogModule({
   type: 'rainSensor',
   threshold: 0.5,
   load: 1 / 1500,
-  vmin: 3.3,
+  vmin: 3.0, // LM393: funciona a partir de ~3 V (o pino 3V3 com carga fica um pouco abaixo de 3,3 V)
   aoFrac: ({ input }) => 1 - 0.8 * Math.pow(Math.max(0, Math.min(100, input.value ?? 0)) / 100, 0.6),
   trigger: 'below',
   activeLow: true,

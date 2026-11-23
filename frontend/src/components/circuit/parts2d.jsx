@@ -61,6 +61,8 @@ const SERVO_DIMS = {
   servoFS90R: { L: 2.3, W: 1.22, hornX: 0.55, pinX: -2.3, color: '#262626', label: 'FS90R', arm: 1.6, live: true },
   // pato robô: servo Feetech de barramento (comandado por impulsos no simulador)
   servoFeetech: { L: 2.9, W: 2.3, hornX: 0.55, pinX: -2.35, color: '#1a1a1a', label: 'FEETECH', arm: 1.0, metal: true },
+  // humanoide Microban: Dynamixel XL330 (comandado por impulsos no simulador)
+  servoXL330: { L: 3.4, W: 2.0, hornX: 0.7, pinX: -2.6, color: '#2b2d31', label: 'XL330', arm: 1.0 },
 }
 export const hasServoImage = (type) => !!SERVO_DIMS[type]
 

@@ -14,6 +14,8 @@ export default {
         }
         begin(a = 10, b, c, d) {
           this.cs = d != null ? d : a
+          // begin(sck, mosi, miso, cs): SPI por software nesses pinos
+          this.soft = d != null ? { sck: a, mosi: b, miso: c } : null
           env.api.pinMode(this.cs, 'OUTPUT')
           env.api.digitalWrite(this.cs, 1)
           return true
@@ -26,6 +28,7 @@ export default {
             digitalWrite(this.cs, 1)
             return 0
           }
+          for (const { part } of spiSelected(env, this.cs)) env.state(part.id).spiPins = this.soft
           spiTransfer(env, 0x01, this.cs)
           const hi = spiTransfer(env, cfg, this.cs)
           const lo = spiTransfer(env, 0x00, this.cs)

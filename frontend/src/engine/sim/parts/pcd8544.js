@@ -10,6 +10,7 @@ export default {
   stamp({ cond, s, vd }) {
     if (s.damaged) return cond('VCC', 'GND', 1e-9)
     cond('VCC', 'GND', 0.0004 / 3.3)
+    cond('BL', 'GND', 1 / 100000) // BL solto fica a 0 V (LEDs apagados)
     if (vd('BL', 'GND') > 1.8) cond('BL', 'GND', 1 / 330)
   },
   update(ctx) {

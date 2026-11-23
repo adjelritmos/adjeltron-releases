@@ -14,7 +14,7 @@ export default {
   stamp(ctx) {
     const { cond, src, s, vd } = ctx
     cond('VCC', 'GND', 1 / 800) // ~6 mA
-    if (!s.powered) return
+    if (!s.powered) return cond('OUT', 'GND', 1e-5) // sem alimentação a saída descarrega para o GND (~0 V)
     const vcc = vd('VCC', 'GND')
     src('OUT', 'GND', clamp((s.theta ?? 0) + 180, 0, 360) / 360 * vcc, 200)
   },

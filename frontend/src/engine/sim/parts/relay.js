@@ -25,9 +25,11 @@ export default {
   update(ctx) {
     const { vd, set, s, cfg } = ctx
     supply(ctx, { vMin: 3.5, vMax: V_MAX })
-    const vin = cfg.trigger === 'low' ? vd('VCC', 'IN') : vd('IN', 'GND')
+    // ativo a LOW: LED do optoacoplador (~1,2 V) em série com o LED indicador (~1,8 V) — só
+    // conduz com VCC − IN acima de ~3 V; ativo a HIGH: base do transístor (HIGH ≥ 2 V)
+    const on = cfg.trigger === 'low' ? vd('VCC', 'IN') > 3.0 : vd('IN', 'GND') > 2.0
     // a bobina só atrai com ≥ ~3,75 V (75 % da nominal)
-    set('coil', !!s.powered && vin > 2.0 && vd('VCC', 'GND') >= 3.75)
+    set('coil', !!s.powered && on && vd('VCC', 'GND') >= 3.75)
   },
   step(ctx) {
     const { s, vd, log, invalidate } = ctx

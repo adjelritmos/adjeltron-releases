@@ -1,9 +1,11 @@
 // Campainha ding-dong: bobina (resistência V²/P). Atrai o martelo acima de 60 % da tensão
-// nominal ("ding") e larga-o abaixo de 40 % ("dong"). live.ding / live.dong contam as
+// nominal ("ding") e larga-o abaixo de 40 % ("dong"), se a tensão se mantiver ~10 ms. live.ding / live.dong contam as
 // pancadas (o 3D toca o som e mexe o martelo quando mudam).
 import { campTipo } from '../../../../../shared/parts/campainha.js'
 import { directPinIssue } from './_casa.js'
 import * as i18n from '../../../../../shared/i18n.js'
+
+const MOVE_MS = 10
 
 export default {
   type: 'campainha',
@@ -14,10 +16,14 @@ export default {
   step({ s, cfg, vd }) {
     const t = campTipo(cfg)
     const v = Math.abs(vd('1', '2'))
-    const on = v >= (s.on ? 0.4 : 0.6) * t.v
-    if (on && !s.on) s.ding = (s.ding || 0) + 1
-    if (!on && s.on) s.dong = (s.dong || 0) + 1
-    s.on = on
+    const want = v >= (s.on ? 0.4 : 0.6) * t.v
+    // o núcleo/martelo tem inércia (~10 ms de curso): os ressaltos de 1–2 ms do botão não dão pancadas
+    s.moveMs = want !== !!s.on ? (s.moveMs || 0) + 1 : 0
+    if (s.moveMs < MOVE_MS) return
+    s.moveMs = 0
+    if (want) s.ding = (s.ding || 0) + 1
+    else s.dong = (s.dong || 0) + 1
+    s.on = want
   },
   output({ s, live }) {
     live.on = !!s.on

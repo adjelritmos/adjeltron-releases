@@ -103,6 +103,8 @@ export const EXAMPLE_NAMES_EN = {
   ottoEvita: 'Otto DIY: walks and avoids obstacles (HC-SR04)',
   ottoHumanoide: 'Otto Humanoid: waves, LED mouth and walks (6 servos)',
   ottoNinja: 'Otto Ninja: walks and turns into a car (4 servos)',
+  microban: 'Microban humanoid (Rhoban, 19 XL330 servos)',
+  relogioRedondoGc9a01: 'Analog clock on a round 1.28" GC9A01 display',
   p4dRobo: 'Pico4Drive: 2WD robot with a Pico 2',
   p4dBasico: 'Pico4Drive: BasicRobot (4 motors + battery)',
   p4dTanque: 'Pico4Drive: TankDrive with a joystick',

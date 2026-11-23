@@ -41,7 +41,7 @@ export function ttDef(enc) {
       ? 'Motor TT amarelo (caixa redutora 1:48, 3–6 V, ~200 rpm a 6 V) com encoder magnético de efeito Hall atrás do motor: disco de 11 impulsos por volta do rotor e 2 canais em quadratura (A e B). Por volta do veio de saída: 11 × 48 = 528 impulsos em cada canal — 528 com RISING em A, 1056 com CHANGE em A, 2112 com a Encoder.h (4 flancos). Ficha de 6 vias: M+ · GND · A · B · VCC · M−. Comande o motor (M+/M−) com uma ponte H e alimente o encoder com 5 V; ligue A e B a pinos com interrupção (no Uno D2 e D3). ' +
         ENC_SIGN_NOTE +
         ' O veio é duplo: prenda uma roda, engrenagem ou polia em qualquer dos lados (rodam juntos).'
-      : 'Motor DC amarelo com caixa redutora 1:48 (3–6 V, ~200 rpm a 6 V, ~0,8 kg·cm), sem roda. O veio em D é duplo e sai dos dois lados da caixa: prenda uma roda (com pneu ou impressa), uma engrenagem, uma polia GT2 ou uma barra em qualquer dos lados (rodam juntos, no mesmo sentido). Comande-o com uma ponte H (L298N, L293D, TB6612) ligada a M+ e M−; com mais tensão roda mais depressa. É o motor dos robôs 2WD/4WD baratos.',
+      : 'Motor DC amarelo com caixa redutora 1:48 (3–6 V, ~200 rpm a 6 V; binário de bloqueio ~0,8 kg·cm a 3 V e quase o dobro a 6 V), sem roda. O veio em D é duplo e sai dos dois lados da caixa: prenda uma roda (com pneu ou impressa), uma engrenagem, uma polia GT2 ou uma barra em qualquer dos lados (rodam juntos, no mesmo sentido). Comande-o com uma ponte H (L298N, L293D, TB6612) ligada a M+ e M−; com mais tensão roda mais depressa. É o motor dos robôs 2WD/4WD baratos.',
     size: [2.8 - back, 2.2, 2.2],
     pins: enc
       ? encMotorPins(TT.ENC.pin, TT.AY, P)

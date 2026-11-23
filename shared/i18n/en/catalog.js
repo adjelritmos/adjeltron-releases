@@ -114,6 +114,7 @@ registerOverlay('catalog', () => CATALOG, {
       'Kit MDF / acrílico cortado a laser': { label: 'Laser-cut MDF / acrylic kit' },
       'Cão robô de alumínio': { label: 'Aluminum robot dog' },
       'Pato robô bípede (tipo XGO-Duck)': { label: 'Biped robot duck (XGO-Duck style)' },
+      'Humanoide Microban (Rhoban)': { label: 'Microban humanoid (Rhoban)' },
       'Quadrúpede, humanoide e drone': { label: 'Quadruped, humanoid and drone' },
       outros: { label: 'Other' },
     },

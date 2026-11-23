@@ -7,10 +7,12 @@ import * as i18n from '../../../../../shared/i18n.js'
 function behavior(def) {
   const m = def.dio
   const nm = def.short
+  // joelho do zener: a folha de dados garante Vz à corrente de ensaio Izt (não a corrente zero)
+  const vk = m.zener ? m.vz - (m.izt || 0) * m.rz : 0
   const fmtI = (i) => (i >= 1 ? `${i.toFixed(1)} A` : `${(i * 1000).toFixed(0)} mA`)
   return {
     type: def.type,
-    diodes: () => [{ key: 'f', a: 'A', k: 'K', vf: m.vf, r: m.r }, ...(m.zener ? [{ key: 'z', a: 'K', k: 'A', vf: m.vz, r: m.rz }] : [])],
+    diodes: () => [{ key: 'f', a: 'A', k: 'K', vf: m.vf, r: m.r }, ...(m.zener ? [{ key: 'z', a: 'K', k: 'A', vf: vk, r: m.rz }] : [])],
     stamp({ s, cond }) {
       if (s.shorted) return cond('A', 'K', 1 / 0.5) // junção rompida: curto
       if (m.leak) cond('A', 'K', m.leak) // fuga inversa do Schottky
@@ -57,7 +59,7 @@ function behavior(def) {
       const un = ['A', 'K'].filter((x) => !isC(x))
       if (un.length === 1) issues.push({ level: 'info', msg: i18n.m(`${name}: perna ${un[0]} sem ligação.`, `${name}: leg ${un[0]} not connected.`), parts: [part.id] })
       const v = vd('A', 'K')
-      const i = v > m.vf ? (v - m.vf) / m.r : m.zener && -v > m.vz ? (-v - m.vz) / m.rz : 0
+      const i = v > m.vf ? (v - m.vf) / m.r : m.zener && -v > vk ? (-v - vk) / m.rz : 0
       if (i > m.imax * 1.5) issues.push({ level: 'error', msg: i18n.m(`${name}: ~${i >= 1 ? `${Math.min(99, i).toFixed(1)} A` : `${(i * 1000).toFixed(0)} mA`} (máx. ${fmtI(m.imax)}) — ${m.zener ? 'falta a resistência em série?' : 'está diretamente aos terminais da fonte ou montado ao contrário?'}`, `${name}: ~${i >= 1 ? `${Math.min(99, i).toFixed(1)} A` : `${(i * 1000).toFixed(0)} mA`} (max ${fmtI(m.imax)}) — ${m.zener ? 'missing the series resistor?' : 'is it directly across the supply terminals or mounted backwards?'}`), parts: [part.id] })
       if (!m.zener && m.vrrm && -v > m.vrrm) issues.push({ level: 'error', msg: i18n.m(`${name}: ${(-v).toFixed(0)} V ao contrário, acima do máximo de ${m.vrrm} V — rompe. Use um díodo com mais tensão (1N5819: 40 V, 1N4007: 1000 V).`, `${name}: ${(-v).toFixed(0)} V reverse, above the ${m.vrrm} V maximum — it breaks down. Use a diode with a higher voltage rating (1N5819: 40 V, 1N4007: 1000 V).`), parts: [part.id] })
     },

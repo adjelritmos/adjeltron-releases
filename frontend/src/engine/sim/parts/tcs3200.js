@@ -19,8 +19,9 @@ export function tcsFreq(ctx) {
   const g = field(input, cfg, 'g', 30) / 255
   const b = field(input, cfg, 'b', 30) / 255
   // filtro: LL vermelho, HH verde, LH azul, HL sem filtro
-  const ch = !s2 && !s3 ? r : s2 && s3 ? g : !s2 && s3 ? b : (r + g + b) / 3
-  return { fs, f: fs * (0.02 + 0.33 * ch), filter: !s2 && !s3 ? 'R' : s2 && s3 ? 'G' : !s2 && s3 ? 'B' : 'C' }
+  // sem filtro os fotodíodos veem a luz toda (≈ soma dos três canais), sem passar do fundo de escala
+  const ch = !s2 && !s3 ? r : s2 && s3 ? g : !s2 && s3 ? b : 0.9 * (r + g + b)
+  return { fs, f: fs * Math.min(1, 0.02 + 0.33 * ch), filter: !s2 && !s3 ? 'R' : s2 && s3 ? 'G' : !s2 && s3 ? 'B' : 'C' }
 }
 
 export default {

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { DEFS, autoWireColor, defaultConfig, has2d, pins2dLocal, rot2d, view2dInfo, PITCH_PX, CHASSIS, mountsOf } from '@shared/components.js'
-import { syncBreadboards, normalizeSeating, withoutUnknownParts, seatStatus, seatMessage, reconcileSeat, movesOnBreadboard, moveOnBreadboard } from '@shared/placement.js'
+import { syncBreadboards, keepOnBreadboard, normalizeSeating, withoutUnknownParts, seatStatus, seatMessage, reconcileSeat, movesOnBreadboard, moveOnBreadboard } from '@shared/placement.js'
 import { fixAxleParents, axleHostFor } from '@shared/assembly.js'
 import { followSockets, placeInSocket, socketMount } from '@shared/sockets.js'
 import { trackInfo } from '@shared/tracks.js'
@@ -234,16 +234,21 @@ export const useStore = create((set, get) => ({
   },
   rotateSch: (id) => {
     const before = seatStatus(get().parts, id)
+    const rot0 = get().parts.find((p) => p.id === id)?.sch?.rot || 0
     set((s) => ({
-      parts: syncBreadboards(followSockets(s.parts.map((p) => (p.id === id && p.sch ? { ...p, sch: snapSch(p.type, p.sch.x, p.sch.y, ((p.sch.rot || 0) + 90) % 360) } : p)), id), { plug: id }),
+      // na breadboard: rodada fica nos furos válidos mais próximos (ou não roda), nunca vai para a mesa
+      parts: keepOnBreadboard(followSockets(s.parts.map((p) => (p.id === id && p.sch ? { ...p, sch: onBreadboardTop(s.parts, p) ? { ...p.sch, rot: ((p.sch.rot || 0) + 90) % 360 } : snapSch(p.type, p.sch.x, p.sch.y, ((p.sch.rot || 0) + 90) % 360) } : p)), id), id, s.parts),
     }))
     const msg = seatMessage(before, seatStatus(get().parts, id))
-    if (msg) get().notify(msg)
+    const p1 = get().parts.find((p) => p.id === id)
+    if (before === 'in' && (p1?.sch?.rot || 0) === rot0) get().notify(t('wb.store.noRoomRotate'))
+    else if (msg) get().notify(msg)
   },
   seatStatusOf: (id) => seatStatus(get().parts, id),
   // fim do arrasto 3D de uma peça da breadboard (before = estado do encaixe no início)
   dropOnBreadboard: (id, before) => {
-    set((s) => ({ parts: syncBreadboards(s.parts) }))
+    // largada num sítio sem furos (calha, borda): fica nos furos mais próximos; só sai se for largada fora da breadboard
+    set((s) => ({ parts: keepOnBreadboard(s.parts, id, s.parts, { allowLeave: true }) }))
     const after = seatStatus(get().parts, id)
     const msg = before && !after ? t('wb.store.offBreadboard') : seatMessage(before, after)
     if (msg) get().notify(msg)
@@ -310,7 +315,9 @@ export const useStore = create((set, get) => ({
       const view = view2dInfo(part.type)?.view
       if (view) {
         const rot = ((((part.sch.rot || 0) - deg) % 360) + 360) % 360
-        set((s) => ({ parts: syncBreadboards(s.parts.map((p) => (p.id === id ? { ...p, sch: snapSch(p.type, p.sch.x, p.sch.y, rot) } : p)), { plug: id }) }))
+        // (na breadboard sem acertar à grelha do 2D: os pinos ficam nos furos; sem sítio, não roda)
+        set((s) => ({ parts: keepOnBreadboard(s.parts.map((p) => (p.id === id ? { ...p, sch: { ...p.sch, rot } } : p)), id, s.parts) }))
+        if ((get().parts.find((p) => p.id === id)?.sch?.rot || 0) !== rot) return void get().notify(t('wb.store.noRoomRotate'))
         const msg = seatMessage(before, seatStatus(get().parts, id))
         if (msg) get().notify(msg)
         return
@@ -446,6 +453,12 @@ export const useStore = create((set, get) => ({
   newProject: () => set({ parts: [], wires: [], selected: null, pendingPin: null, code: NEW_SKETCH, projectName: t('wb.projects.newTitle'), track: 'mesa', libs: [], lang: 'cpp', codeAlt: null, nvm: null }),
   log: (text, level) => set((s) => ({ serial: [...s.serial.slice(-400), { text, level }] })),
 }))
+
+// peça pousada em cima de uma breadboard (pai = breadboard, ponto 'top')
+function onBreadboardTop(parts, p) {
+  const b = p.parent && parts.find((q) => q.id === p.parent.id)
+  return !!(b && DEFS[b.type]?.breadboard && p.parent.mount === 'top')
+}
 
 // gravação automática
 let saveTimer = null

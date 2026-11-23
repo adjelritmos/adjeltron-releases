@@ -16,8 +16,8 @@ export default {
   // pilha e ficha de pressão (os fios soltos não colidem)
   collider: { size: [5.52, 1.75, 2.66], pos: [0.34, 0.875, 0] },
   pins: [
-    { id: '+', label: '+ (vermelho)', pos: [6.2, 0.2, -0.4], kind: 'bat+', conn: 'solder', dir: [1, 0, 0] },
-    { id: '-', label: '− (preto)', pos: [6.2, 0.2, 0.4], kind: 'bat-', conn: 'solder', dir: [1, 0, 0] },
+    { id: '+', label: '+ (vermelho)', pos: [4.0, 0.2, -0.4], kind: 'bat+', conn: 'solder', dir: [1, 0, 0] },
+    { id: '-', label: '− (preto)', pos: [4.0, 0.2, 0.4], kind: 'bat-', conn: 'solder', dir: [1, 0, 0] },
   ],
   config: { charge: 90, color: '#f59e0b' },
   fields: [

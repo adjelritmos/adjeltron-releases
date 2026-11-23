@@ -5,6 +5,8 @@ import { rowX } from '../geometry.js'
 export const TFT77 = {
   st7735: { tw: 128, th: 160, L: 3.4, D: 5.6, act: { x: [-1.4, 1.4], z: [-2.15, 1.35] }, ctl: 'ST7735' },
   st7789: { tw: 240, th: 240, L: 3.14, D: 4.0, act: { x: [-1.386, 1.386], z: [-1.17, 1.6] }, ctl: 'ST7789' },
+  // ecrã redondo (shared/parts/gc9a01.js): área ativa = círculo Ø32,4 mm inscrito em 240×240
+  gc9a01: { tw: 240, th: 240, L: 3.9, D: 4.9, act: { x: [-1.62, 1.62], z: [-1.37, 1.87] }, ctl: 'GC9A01', round: true },
 }
 
 const st7735 = {

@@ -2,6 +2,8 @@
 // chapa pintada com os cantos boleados, grelhas de ventilação e pés de borracha; painel por
 // cima (ecrã com moldura e os valores atuais, botões serrilhados, teclas de borracha) e os
 // bornes de 4 mm à frente (+x).
+import { useRef } from 'react'
+import { useFrame } from '@react-three/fiber'
 import INSTR_DEFS, { WAVES } from '@shared/parts/instrF.js'
 import { SCREEN_TINT, THREE, geo, mat, mergedGeo, liveOf, inputOf, SilkText } from '../kit.jsx'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
@@ -53,10 +55,18 @@ function drawSig(ctx, w, h, d) {
   ctx.textBaseline = 'middle'
   ctx.font = `bold ${Math.round(h * 0.08)}px monospace`
   ctx.fillText(`${waveName(d.wave).toUpperCase()}`, w * 0.06, h * 0.6)
+  // parâmetro que o manípulo regula (teclas ◀ ▶) em amarelo
+  const hl = (k) => (ctx.fillStyle = d.sel === k ? '#ffd34d' : '#7fe3ff')
+  hl('freq')
   ctx.font = `bold ${Math.round(h * 0.1)}px monospace`
   ctx.fillText(`${fmt(d.freq, d.freq < 10 ? 2 : 1)} Hz`, w * 0.06, h * 0.73)
-  ctx.font = `${Math.round(h * 0.062)}px monospace`
-  ctx.fillText(`A ${fmt(d.amp, 2)} Vp  OFS ${fmt(d.offset, 2)} V`, w * 0.06, h * 0.86)
+  ctx.font = `${Math.round(h * 0.058)}px monospace`
+  hl('amp')
+  ctx.fillText(`A ${fmt(d.amp, 2)}V`, w * 0.04, h * 0.86)
+  hl('offset')
+  ctx.fillText(`OFS ${fmt(d.offset, 2)}`, w * 0.36, h * 0.86)
+  hl('duty')
+  ctx.fillText(`D ${fmt(d.duty, 0)}%`, w * 0.73, h * 0.86)
   ctx.fillStyle = d.on ? '#4ade80' : '#355'
   ctx.textAlign = 'right'
   ctx.fillText(d.on ? 'OUT ON' : 'OUT', w * 0.95, h * 0.6)
@@ -112,7 +122,7 @@ function Case({ part, kind, children }) {
     (ctx, w, h, d) => (sig ? drawSig(ctx, w, h, d) : drawPsu(ctx, w, h, d)),
     () => {
       const l = liveOf(part.id)
-      if (sig) return { wave: cur(part, 'wave', 'sine'), freq: +cur(part, 'freq', 2), amp: +cur(part, 'amp', 2), offset: +cur(part, 'offset', 0), duty: +cur(part, 'duty', 50), on: !!l }
+      if (sig) return { sel: cur(part, 'sel', 'freq'), wave: cur(part, 'wave', 'sine'), freq: +cur(part, 'freq', 2), amp: +cur(part, 'amp', 2), offset: +cur(part, 'offset', 0), duty: +cur(part, 'duty', 50), on: !!l }
       return { v: l?.v ?? 0, i: l?.i ?? 0, mode: l?.mode ?? 'off', ilim: +cur(part, 'ilim', 1) }
     },
   )
@@ -145,11 +155,16 @@ function Jack({ pin, color }) {
   return <BindingPost pos={pin.pos} color={color} panel={BX[1]} />
 }
 // botão rotativo serrilhado com o risco do índice
-function Knob({ x, z, r = 0.32 }) {
+// frac(): 0…1 → o manípulo roda 300° (como um potenciómetro), atualizado a cada imagem
+function Knob({ x, z, r = 0.32, frac }) {
+  const g = useRef()
+  useFrame(() => {
+    if (g.current && frac) g.current.rotation.y = (0.5 - Math.max(0, Math.min(1, frac()))) * (5 * Math.PI / 3)
+  })
   return (
-    <group>
-      <mesh position={[x, H, z]} geometry={knobGeo(r, 0.22)} material={mat('#141414', 0, 0.38)} castShadow />
-      <mesh position={[x + r * 0.45, H + 0.222, z]} geometry={geo(`instrPtr${r}`, () => new THREE.BoxGeometry(r * 0.75, 0.008, 0.05))} material={mat('#e5e5e5', 0, 0.5)} />
+    <group ref={g} position={[x, 0, z]}>
+      <mesh position={[0, H, 0]} geometry={knobGeo(r, 0.22)} material={mat('#141414', 0, 0.38)} castShadow />
+      <mesh position={[r * 0.45, H + 0.222, 0]} geometry={geo(`instrPtr${r}`, () => new THREE.BoxGeometry(r * 0.75, 0.008, 0.05))} material={mat('#e5e5e5', 0, 0.5)} />
     </group>
   )
 }
@@ -162,7 +177,11 @@ function SigModel({ part }) {
   const def = INSTR_DEFS[0]
   return (
     <Case part={part} kind="sig">
-      <Knob x={1.1} z={1.55} r={0.42} />
+      <Knob x={1.1} z={1.55} r={0.42} frac={() => {
+        const k = cur(part, 'sel', 'freq')
+        const v = +cur(part, k, k === 'freq' ? 2 : k === 'duty' ? 50 : 0)
+        return k === 'freq' ? Math.log10(v / 0.1) / Math.log10(5000) : k === 'duty' ? v / 100 : k === 'amp' ? v / 10 : (v + 10) / 20
+      }} />
       {[-1.2, -0.55, 0.1].map((x, i) => (
         <Key key={x} x={x} z={1.62} color={i === 0 ? '#1e88e5' : '#444'} />
       ))}
@@ -176,8 +195,8 @@ function PsuModel({ part }) {
   const def = INSTR_DEFS[1]
   return (
     <Case part={part} kind="psu">
-      <Knob x={-0.6} z={1.55} />
-      <Knob x={0.4} z={1.55} />
+      <Knob x={-0.6} z={1.55} frac={() => +cur(part, 'volts', 12) / 30} />
+      <Knob x={0.4} z={1.55} frac={() => +cur(part, 'ilim', 1) / 5} />
       <Key x={1.25} z={1.62} color="#c62828" />
       <Jack pin={def.pins[0]} color="#d32f2f" />
       <Jack pin={def.pins[1]} color="#151515" />

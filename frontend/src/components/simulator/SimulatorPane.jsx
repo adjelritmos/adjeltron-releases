@@ -2,7 +2,7 @@
 // diagnóstico, pistas, exportação de imagens
 import { useRef, useState } from 'react'
 import { Button, Tabs, Tab, Select, SelectItem, Chip, Kbd, Tooltip, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, Popover, PopoverTrigger, PopoverContent, Modal, ModalContent, ModalHeader, ModalBody, Input, Badge, Card, CardHeader, CardBody, Divider } from '@heroui/react'
-import { Activity, CircuitBoard, Box, Cable, LocateFixed, PanelLeftClose, PanelLeftOpen, Plus, Scan, Search, X } from 'lucide-react'
+import { Activity, CircuitBoard, Box, Cable, LocateFixed, PanelLeftClose, PanelLeftOpen, Plus, Scan, Search, X, SlidersHorizontal, Eye, EyeOff } from 'lucide-react'
 import { useStore } from '../../contexts/store.js'
 import { Scene3D } from '../three/Scene3D.jsx'
 import { Circuit2D } from '../circuit/Circuit2D.jsx'
@@ -334,13 +334,52 @@ export function SimulatorPane() {
         <PropertiesCard />
         <CameraPanel />
         {mode === 'sim' && (
-          <div className="absolute top-3 right-3 z-10 flex flex-col gap-2 items-end max-h-[calc(100%-24px)] overflow-auto">
-            <Telemetry />
-            <SimControls />
-          </div>
+          <SimPanels />
         )}
         <Toast />
       </main>
+    </div>
+  )
+}
+
+// painéis da simulação (telemetria e controlos): cada um pode ser ocultado e voltar a ser
+// mostrado com os botões por cima deles; a escolha fica guardada neste browser
+const PANELS_KEY = 'adjeltron.simPanels'
+function loadPanels() {
+  try {
+    return { tele: true, ctrl: true, ...JSON.parse(localStorage.getItem(PANELS_KEY) || '{}') }
+  } catch {
+    return { tele: true, ctrl: true }
+  }
+}
+function SimPanels() {
+  const t = useT()
+  const [show, setShow] = useState(loadPanels)
+  const toggle = (k) =>
+    setShow((s) => {
+      const n = { ...s, [k]: !s[k] }
+      try {
+        localStorage.setItem(PANELS_KEY, JSON.stringify(n))
+      } catch {
+        /* sem armazenamento: só nesta sessão */
+      }
+      return n
+    })
+  const btn = (k, Icon, label) => (
+    <Tooltip content={show[k] ? t('wb.pane.hidePanel', { name: label }) : t('wb.pane.showPanel', { name: label })}>
+      <Button size="sm" variant={show[k] ? 'flat' : 'bordered'} className="bg-black/70 border border-white/10 h-7 min-w-0 px-2 gap-1" onPress={() => toggle(k)} aria-pressed={show[k]} startContent={<Icon size={13} />} endContent={show[k] ? <Eye size={12} className="opacity-60" /> : <EyeOff size={12} className="opacity-60" />}>
+        <span className="text-[11px]">{label}</span>
+      </Button>
+    </Tooltip>
+  )
+  return (
+    <div className="absolute top-3 right-3 z-10 flex flex-col gap-2 items-end max-h-[calc(100%-24px)] overflow-auto">
+      <div className="flex gap-1.5 shrink-0">
+        {btn('tele', Activity, t('wb.pane.telemetry'))}
+        {btn('ctrl', SlidersHorizontal, t('wb.pane.controls'))}
+      </div>
+      {show.tele && <Telemetry />}
+      {show.ctrl && <SimControls />}
     </div>
   )
 }

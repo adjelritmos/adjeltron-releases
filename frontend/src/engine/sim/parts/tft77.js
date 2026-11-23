@@ -1,13 +1,14 @@
 // TFT ST7735 (128×160) e ST7789 (240×240): como o ili9341.js — a imagem RGB565 vive na memória
 // do objeto da biblioteca (s.tft), enviada ao browser em RLE só durante ~0,5 s após cada mudança.
-// ST7735: retroiluminação pelo pino LED; ST7789: BLK (desligado = acesa, LOW = apagada).
+// ST7735: retroiluminação pelo pino LED; ST7789 e GC9A01 (redondo): BLK (desligado = acesa, LOW = apagada).
 import { modulePower, powerDiagnose } from './_util.js'
 import { rle16 } from '../libs/_gfxG.js'
 import * as i18n from '../../../../../shared/i18n.js'
 
 function make(type) {
-  const isS89 = type === 'st7789'
-  const label = isS89 ? 'ST7789' : 'ST7735'
+  // o GC9A01 (ecrã redondo) tem os mesmos pinos e a mesma retroiluminação do ST7789
+  const isS89 = type !== 'st7735'
+  const label = { st7735: 'ST7735', st7789: 'ST7789', gc9a01: 'GC9A01' }[type]
   return {
     type,
     stamp({ cond, s, vd }) {
@@ -17,7 +18,10 @@ function make(type) {
         // BLK com pull-up no módulo; a luz (~25 mA) vem do VCC
         cond('BLK', 'VCC', 1 / 10000)
         if (s.bl) cond('VCC', 'GND', 0.025 / 5)
-      } else if (vd('LED', 'GND') > 2.8) cond('LED', 'GND', 0.04 / 5)
+      } else {
+        cond('LED', 'GND', 1 / 100000) // LED solto fica a 0 V (retroiluminação apagada)
+        if (vd('LED', 'GND') > 2.8) cond('LED', 'GND', 0.04 / 5)
+      }
     },
     update(ctx) {
       modulePower(ctx, 3.0, 5.6, 6.5)
@@ -60,3 +64,4 @@ function make(type) {
 
 export const st7735 = make('st7735')
 export const st7789 = make('st7789')
+export const gc9a01 = make('gc9a01')

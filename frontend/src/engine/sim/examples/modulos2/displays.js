@@ -1,5 +1,6 @@
 // Exemplos do grupo G (ecrãs): estação meteorológica num e-paper 2,9" (GxEPD2 + DHT22) e
-// relógio de cores num TFT ST7789 (Adafruit_ST7789) com potenciómetro.
+// relógio de cores num TFT ST7789 (Adafruit_ST7789) com potenciómetro e relógio analógico
+// no ecrã redondo GC9A01 (Adafruit_GC9A01A).
 import { H } from '../../examples.js'
 
 const { part, mesa, fios, arduino, RED, BLK, COR } = H
@@ -247,6 +248,104 @@ function buildSt7789() {
   return { parts, wires }
 }
 
+// ---------------- Ecrã redondo GC9A01: relógio analógico ----------------
+const CODE_GC9A01 = `// ==========================================
+//  Relógio analógico num ecrã redondo 1,28"
+//  GC9A01 (240×240, só se vê o círculo)
+//  SPI: SCL → D13, SDA → D11, CS → D10, DC → D9,
+//  RES → D8. BLK desligado = luz sempre acesa.
+//  Só se apagam e redesenham os ponteiros, por
+//  isso a imagem não pisca.
+// ==========================================
+#include <Adafruit_GFX.h>
+#include <Adafruit_GC9A01A.h>
+#include <SPI.h>
+
+Adafruit_GC9A01A tft(10, 9, 8);   // CS, DC, RST
+const int CX = 120, CY = 120;
+float aH = -1, aM = -1, aS = -1;  // ângulos desenhados da última vez
+int h = 10, m = 8, s = 30;        // hora inicial
+unsigned long ultimo = 0;
+
+// ponteiro do centro para fora: comprimento L, espessura e cor
+void ponteiro(float ang, int L, int esp, uint16_t c) {
+  float r = (ang - 90) * PI / 180.0;
+  int x = CX + cos(r) * L, y = CY + sin(r) * L;
+  for (int k = -esp; k <= esp; k++) tft.drawLine(CX + k, CY, x + k, y, c);
+}
+
+void mostrador() {
+  tft.fillScreen(GC9A01A_BLACK);
+  tft.drawCircle(CX, CY, 118, tft.color565(40, 60, 90));
+  tft.drawCircle(CX, CY, 117, tft.color565(40, 60, 90));
+  for (int i = 0; i < 60; i++) {
+    float r = i * 6 * PI / 180.0;
+    int r0 = i % 5 == 0 ? 96 : 104;
+    uint16_t c = i % 15 == 0 ? GC9A01A_ORANGE : (i % 5 == 0 ? GC9A01A_WHITE : tft.color565(90, 100, 120));
+    tft.drawLine(CX + cos(r) * r0, CY + sin(r) * r0, CX + cos(r) * 110, CY + sin(r) * 110, c);
+  }
+  tft.setTextColor(tft.color565(120, 200, 255));
+  tft.setTextSize(2);
+  tft.setCursor(84, 168);
+  tft.print("adjeltron");
+}
+
+void setup() {
+  Serial.begin(9600);
+  tft.begin();
+  mostrador();
+}
+
+void loop() {
+  if (millis() - ultimo >= 1000) {
+    ultimo = millis();
+    if (++s == 60) { s = 0; if (++m == 60) { m = 0; h = (h + 1) % 12; } }
+    float nH = h * 30 + m * 0.5, nM = m * 6, nS = s * 6;
+    // apaga os ponteiros antigos (a preto) e desenha os novos
+    if (aS >= 0) { ponteiro(aS, 92, 0, GC9A01A_BLACK); ponteiro(aM, 84, 1, GC9A01A_BLACK); ponteiro(aH, 58, 2, GC9A01A_BLACK); }
+    ponteiro(nH, 58, 2, GC9A01A_WHITE);
+    ponteiro(nM, 84, 1, tft.color565(120, 200, 255));
+    ponteiro(nS, 92, 0, GC9A01A_RED);
+    tft.fillCircle(CX, CY, 5, GC9A01A_ORANGE);
+    aH = nH; aM = nM; aS = nS;
+    Serial.print("Hora: ");
+    Serial.print(h); Serial.print(":");
+    if (m < 10) Serial.print("0");
+    Serial.print(m); Serial.print(":");
+    if (s < 10) Serial.print("0");
+    Serial.println(s);
+  }
+}
+`
+
+function buildGc9a01() {
+  const parts = [arduino(), mesa(part('tft', 'gc9a01'), 60, -330)]
+  const W = fios(parts)
+  const A = (pin) => W.at('uno', pin)
+  const T = (pin) => W.at('tft', pin)
+  // pinos na patilha de baixo do ecrã: os fios contornam-no pela esquerda e entram por cima
+  const sig = [
+    ['D13', 'SCK', COR.amarelo],
+    ['D11', 'MOSI', COR.azul],
+    ['D8', 'RST', COR.branco],
+    ['D9', 'DC', COR.verde],
+    ['D10', 'CS', COR.laranja],
+  ]
+  const top = T('GND')[1] - 25
+  const wires = sig.map(([pin, tp, cor], i) => {
+    const [ax] = A(pin)
+    const [tx] = T(tp)
+    const yc = -125 - i * 7
+    const xl = -40 - (sig.length - i) * 7
+    return W('uno', pin, 'tft', tp, cor, [[ax, yc], [xl, yc], [xl, top - i * 6], [tx, top - i * 6]])
+  })
+  wires.push(
+    W('uno', '5V', 'tft', 'VCC', RED, [[A('5V')[0], 140], [-200, 140], [-200, top - 40], [T('VCC')[0], top - 40]]),
+    W('uno', 'GND.1', 'tft', 'GND', BLK, [[A('GND.1')[0], -112], [-190, -112], [-190, top - 34], [T('GND')[0], top - 34]]),
+  )
+  return { parts, wires }
+}
+
 export const PRESETS = {
   meteoEpaper: {
     name: 'Estação meteorológica em e-paper 2,9" (GxEPD2 + DHT22)',
@@ -280,6 +379,21 @@ export const PRESETS = {
         const vers = new Set(S.samples.map((s) => s.live.tft?.ver).filter((v) => v != null))
         const m = [...S.serial.matchAll(/Matiz: (\d+)/g)].map((x) => +x[1])
         return vers.size >= 2 && m[0] > 160 && m[0] < 200 && m.at(-1) > 270 && S.samples.at(-1).live.tft?.px > 20000 ? `matiz ${m.join(' → ')}, ${vers.size} imagens, ${S.samples.at(-1).live.tft.px} pontos acesos` : `seg=${[...vers]} ${m}`
+      },
+    },
+  },
+  relogioRedondoGc9a01: {
+    name: 'Relógio analógico num ecrã redondo GC9A01 1,28"',
+    cat: 'Displays',
+    track: 'mesa',
+    build: buildGc9a01,
+    code: CODE_GC9A01,
+    scenario: {
+      check: (S) => {
+        const vers = new Set(S.samples.map((s) => s.live.tft?.ver).filter((v) => v != null))
+        const t = [...S.serial.matchAll(/Hora: (\d+:\d+:\d+)/g)].map((x) => x[1])
+        const px = S.samples.at(-1).live.tft?.px || 0
+        return vers.size >= 3 && t.length >= 3 && px > 2000 ? `${t.length} segundos (${t[0]} → ${t.at(-1)}), ${vers.size} imagens, ${px} pontos acesos` : `seg=${[...vers]} ${t} ${px}`
       },
     },
   },

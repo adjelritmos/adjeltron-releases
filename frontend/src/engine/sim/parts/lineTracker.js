@@ -13,7 +13,7 @@ function make(type) {
     stamp({ cond, src, s, cfg, vd }) {
       if (s.damaged) return cond('VCC', 'GND', 1e-9)
       cond('VCC', 'GND', (zs.length * 0.015) / 5) // ~15 mA por LED IR
-      if (!s.powered) return
+      if (!s.powered) return outs().forEach((id) => cond(id, 'VCC', 1e-4)) // só os pull-ups de 10 kΩ, para a linha VCC (≈ 0 V)
       const v = vd('VCC', 'GND')
       outs().forEach((id, i) => {
         const black = !!s.black?.[i]
@@ -23,7 +23,7 @@ function make(type) {
     },
     update(ctx) {
       const { input, set, s } = ctx
-      modulePower(ctx, 3.3, 5.5, 6.5)
+      modulePower(ctx, 3.0, 5.5, 6.5)
       const z = +(input.value ?? 0)
       const black = zs.map((zi) => Math.abs(zi - z) < LINE_W / 2 + 0.15)
       set('blk', black.reduce((a, b, i) => a | ((b ? 1 : 0) << i), 0))

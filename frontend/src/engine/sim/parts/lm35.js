@@ -13,7 +13,7 @@ export default {
     if (s.powered) {
       const vs = vd('VS', 'GND')
       src('VOUT', 'GND', clamp((input.value ?? 25) * 0.01, 0, Math.max(0, vs - 1.5)), 20)
-    }
+    } else cond('VOUT', 'GND', 1e-5) // sem alimentação a saída descarrega para o GND (~0 V)
   },
   update({ vd, set, s }) {
     const v = vd('VS', 'GND')

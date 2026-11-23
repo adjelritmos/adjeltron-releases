@@ -1,5 +1,5 @@
 // L9110S: duas pontes H (uma por motor), alimentadas pelo VCC (2,5–12 V). Por canal:
-//   IA IB = 1 0 → OA1 = VCC, OA2 = 0 (frente); 0 1 → trás; 0 0 e 1 1 → ambas iguais (para).
+//   IA IB = 1 0 → OA1 = VCC, OA2 = 0 (frente); 0 1 → trás; 0 0 e 1 1 → ambas a LOW (para).
 // Transístores bipolares/MOS de saída: ~1 Ω por lado (perde ~0,8 V a 800 mA). 800 mA contínuos
 // por canal, 1,5 A de pico; acima disso a proteção térmica desliga a ponte.
 import * as i18n from '../../../../../shared/i18n.js'
@@ -16,14 +16,19 @@ export default {
   type: 'l9110s',
   stamp({ s, cond, src, vd }) {
     cond('VCC', 'GND', s.on ? 1 / 1500 : 1 / 50000)
+    // entradas soltas: pull-down fraco (1 MΩ) para lerem LOW em vez de um valor ao acaso
+    for (const pin of INS) cond(pin, 'GND', 1e-6)
     s.e = null
     if (!s.on || s.hot) return
     const v = Math.max(0, vd('VCC', 'GND'))
     // tensões aplicadas (para a corrente em step() usar as mesmas que o solver resolveu)
     s.e = CH.map(([, ia, ib, o1, o2]) => {
-      const e1 = v * lv(s, vd, ia)
-      const e2 = v * lv(s, vd, ib)
-      // cada saída segue a sua entrada (tensão média com PWM); 0 0 e 1 1 → ambas iguais (para)
+      const a = lv(s, vd, ia)
+      const b = lv(s, vd, ib)
+      // tabela da folha de dados: 1 0 → OA1 alta; 0 1 → OA2 alta; 0 0 e 1 1 → as DUAS a LOW (para).
+      // Com PWM numa entrada conta a fração do tempo em que só essa está a HIGH (tensão média).
+      const e1 = v * a * (1 - b)
+      const e2 = v * b * (1 - a)
       src(o1, 'GND', e1, R_SIDE)
       src(o2, 'GND', e2, R_SIDE)
       return [e1, e2]

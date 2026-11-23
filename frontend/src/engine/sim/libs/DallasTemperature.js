@@ -68,7 +68,7 @@ export default {
           const step = { 9: 0.5, 10: 0.25, 11: 0.125, 12: 0.0625 }[this.bits]
           const done = env.rt.t + CONV_MS[this.bits] * 1000
           for (const p of devs) {
-            const t = env.input(p.id).value ?? 22
+            const t = Math.max(-55, Math.min(125, env.input(p.id).value ?? 22)) // gama do DS18B20
             env.state(p.id).dsPending = { at: done, v: Math.round(t / step) * step }
           }
           this.convEnd = done

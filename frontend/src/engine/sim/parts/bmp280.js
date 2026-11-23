@@ -10,7 +10,10 @@ export default {
   type: 'bmp280',
   stamp({ cond, s }) {
     cond('VCC', 'GND', s.damaged ? 1e-9 : 0.0008 / 5)
+    cond('SDO', 'GND', 1 / 10000) // pull-down de 10 kΩ no GY-BMP280: SDO solto = 0x76
   },
+  // SDO a VCC = 0x77 (como no chip); solto ou a GND vale o endereço escolhido na peça (0x76)
+  i2cAddr: ({ vd, cfg }) => (vd('SDO', 'GND') > 1.4 ? 0x77 : (cfg.addr ?? 0x76)),
   update: (ctx) => modulePower(ctx, 2.7, 5.6, 6.5),
   output({ s, live, input, cfg }) {
     live.powered = !!s.powered && !s.damaged

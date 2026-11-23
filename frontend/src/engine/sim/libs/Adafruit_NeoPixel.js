@@ -2,7 +2,7 @@
 // tipo indicado: NEO_GRB, NEO_RGB…) às fitas/anéis cujo DIN está na rede do pino.
 // Tal como no real, show() demora ~30 µs por LED e um tipo errado troca as cores.
 import { push } from '../parts/_groupA.js'
-import { NEO_TYPES } from '../parts/neopixel.js'
+import { neoTargets } from '../parts/neopixel.js'
 import * as i18n from '../../../../../shared/i18n.js'
 
 // ordem dos bytes: bits 7–6 = posição do W, 5–4 do R, 3–2 do G, 1–0 do B
@@ -56,7 +56,7 @@ export default {
             env.warnOnce(`neobegin${this.pin}`, i18n.m(`Adafruit_NeoPixel: show() sem begin() — o pino ${this.pin} não está configurado como saída e os LEDs não recebem nada.`, `Adafruit_NeoPixel: show() without begin() — pin ${this.pin} is not configured as an output and the LEDs receive nothing.`))
             return
           }
-          const targets = env.partsOnPin(this.pin).filter((q) => NEO_TYPES.has(q.type))
+          const targets = neoTargets(env, this.pin)
           if (!targets.length) {
             env.warnOnce(`neo${this.pin}`, i18n.m(`Adafruit_NeoPixel: nenhuma fita/anel NeoPixel ligado ao pino ${this.pin} (fio do pino → DIN).`, `Adafruit_NeoPixel: no NeoPixel strip/ring connected to pin ${this.pin} (wire from pin → DIN).`))
             return
@@ -70,7 +70,7 @@ export default {
             bytes[o + this.bOff] = scale(b)
             if (this.bpp === 4) bytes[o + this.wOff] = scale(w)
           })
-          for (const q of targets) push(env.state(q.id), { pin: this.pin, bytes }, 50)
+          for (const { part: q, thru } of targets) push(env.state(q.id), { pin: this.pin, bytes, thru }, 50)
         }
         setPixelColor(i, r, g, b, w) {
           i |= 0

@@ -7,12 +7,14 @@ import * as i18n from '../../../../../shared/i18n.js'
 
 /**
  * o: { type, vcc = 'VCC', amps (consumo), vmin, vmax, addrPin: [pino, addrLow, addrHigh],
- *      enablePin (pino ativo a HIGH com pull-up, ex.: XSHUT), output(ctx), diagnose(ctx) }
+ *      enablePin (pino ativo a HIGH com pull-up, ex.: XSHUT), output(ctx), diagnose(ctx),
+ *      i2c: { write(ctx, bytes), read(ctx, n) } (registos do chip para a Wire.h) }
  */
 export function i2cSensor(o) {
   const { type, vcc = 'VCC', amps = 0.001, vmin = 2.7, vmax = 5.6 } = o
   return {
     type,
+    ...(o.i2c ? { i2c: o.i2c } : {}),
     stamp({ cond, s }) {
       if (s.damaged) return cond(vcc, 'GND', 1e-9)
       cond(vcc, 'GND', amps / 5)

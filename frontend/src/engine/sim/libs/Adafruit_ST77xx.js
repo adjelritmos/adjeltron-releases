@@ -2,6 +2,7 @@
 // com outras dimensões: memória RGB565 partilhada com a peça (s.tft = this), escrita logo por SPI.
 // ST7735: initR(INITR_BLACKTAB) → 128×160 (INITR_144GREENTAB → 128×128, INITR_MINI160x80 → 80×160).
 // ST7789: init(240, 240) (também 240×320, 135×240, 170×320…).
+// Adafruit_GC9A01A (ecrã redondo 240×240): begin(); só se vê o círculo inscrito.
 import ili from './Adafruit_ILI9341.js'
 import { withGfxExtras, spiPart } from './_gfxG.js'
 import { TFT77 } from '../../../../../shared/parts/tft77.js'
@@ -116,4 +117,15 @@ export default [
     },
   },
   { header: 'Adafruit_ST77xx.h', globals: ST77XX },
+  {
+    header: 'Adafruit_GC9A01A.h',
+    globals: { ...colors('GC9A01A'), GC9A01A_TFTWIDTH: 240, GC9A01A_TFTHEIGHT: 240 },
+    classes: {
+      Adafruit_GC9A01A: (env) => {
+        const B = make(env, 'gc9a01', 'Ecrã redondo GC9A01')
+        // begin(freq) herdado: inicializa logo 240×240 (o painel é sempre quadrado em memória)
+        return class Adafruit_GC9A01A extends B {}
+      },
+    },
+  },
 ]

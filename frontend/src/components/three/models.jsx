@@ -149,7 +149,7 @@ function drawUnoSilk(ctx, w, h) {
     if (p.pos[2] < 0) vtext(lab === '0' ? 'RX◂0' : lab === '1' ? 'TX▸1' : lab, p.pos[0], p.pos[2] + 0.2, 'right')
     else vtext(lab, p.pos[0], p.pos[2] - 0.2, 'left')
   }
-  for (const e of UNO_EXTRA) if (e.t) e.pos[2] < 0 ? vtext(e.t, e.pos[0], e.pos[2] + 0.2, 'right') : vtext(e.t, e.pos[0], e.pos[2] - 0.2, 'left')
+  for (const e of UNO_EXTRA) if (e.t && !UNO_PINS.some((p) => p.id === e.t)) e.pos[2] < 0 ? vtext(e.t, e.pos[0], e.pos[2] + 0.2, 'right') : vtext(e.t, e.pos[0], e.pos[2] - 0.2, 'left')
   ctx.textAlign = 'center'
   ctx.font = `bold ${0.16 * PX}px Arial`
   ctx.fillText('DIGITAL (PWM~)', X(0.9), Z(-1.55))
@@ -346,10 +346,14 @@ export function BreadboardModel() {
 
 // ---------- Resistência (corpo "osso de cão", riscas com o código de cores) ----------
 const BAND = ['#000000', '#7b3f00', '#e53935', '#fb8c00', '#fdd835', '#43a047', '#1e88e5', '#8e24aa', '#9e9e9e', '#ffffff']
+// multiplicador 0,1 (dourado) e 0,01 (prateado) para valores abaixo de 10 Ω
+const MULT = (e) => (e === -1 ? '#c8a24a' : e === -2 ? '#c0c0c0' : BAND[e])
 export function resistorBands(ohms) {
-  const e = Math.max(0, Math.floor(Math.log10(ohms)) - 1)
-  const sig = Math.round(ohms / Math.pow(10, e))
-  return [BAND[Math.floor(sig / 10) % 10], BAND[sig % 10], BAND[e], '#c8a24a']
+  const r = Math.min(99e9, Math.max(0.1, Number(ohms) || 220))
+  let e = Math.max(-2, Math.floor(Math.log10(r)) - 1)
+  let sig = Math.round(r / Math.pow(10, e))
+  if (sig >= 100) (sig = Math.round(sig / 10)), e++
+  return [BAND[Math.floor(sig / 10) % 10], BAND[sig % 10], MULT(e), '#c8a24a']
 }
 const RES_L = 0.63
 const resProfile = (x) => {
@@ -472,29 +476,70 @@ export function ButtonModel({ part }) {
 }
 
 // ---------- Potenciómetro rotativo ----------
+// WH148 (B10K) como na foto: traseira creme, base de fenólico castanho com a patilha dos 3
+// terminais rebitados (pernas dobradas para baixo), caixa de aço com as patilhas cravadas,
+// casquilho roscado M7 e veio de alumínio estriado com ranhura. Botão opcional (config.knob):
+// preto, com saia, estrias e tampa laranja com o risco indicador a descer pelo lado.
+const POT_BROWN = '#8a4b22'
+const POT_STEEL = '#b9bec4'
+const potThreadGeo = () =>
+  mergedGeo('potThread', () => {
+    const t = geo('potThreadRing', () => new THREE.TorusGeometry(0.2, 0.016, 6, 24).rotateX(Math.PI / 2))
+    return Array.from({ length: 9 }, (_, i) => [t, [0, 0.6 + i * 0.032, 0]])
+  })
 export function PotModel({ part }) {
-  const knob = useRef()
+  const rot = useRef()
   useFrame(() => {
     const v = simRef.inputs[part.id]?.value ?? part.config?.value ?? 0.5
-    if (knob.current) knob.current.rotation.y = (0.5 - v) * 1.5 * Math.PI
+    if (rot.current) rot.current.rotation.y = (0.5 - v) * (5 * Math.PI / 3)
   })
+  const knob = part.config?.knob !== false
   return (
-    <group>
+    <group position={[0, 0, -0.05]}>
+      {/* pernas: tiras estanhadas que descem da patilha até à breadboard */}
       {[-P, 0, P].map((x) => (
         <group key={x}>
-          <Leg from={[x, 0, 0.508]} to={[x, 0.18, 0.508]} r={0.035} color="#cfd2d6" />
-          <Leg from={[x, 0.18, 0.508]} to={[x, 0.22, 0.42]} r={0.035} color="#cfd2d6" />
+          <Box size={[0.1, 0.3, 0.025]} pos={[x, 0.15, 0.558]} color={METAL.tin} metal={0.9} rough={0.35} />
+          {/* rebite oco do terminal */}
+          <Cyl r={0.075} h={0.03} pos={[x, 0.365, 0.52]} color={METAL.tin} metal={0.95} rough={0.3} seg={14} />
+          <Cyl r={0.032} h={0.032} pos={[x, 0.368, 0.52]} color="#3a3a3a" seg={10} />
         </group>
       ))}
-      <RBox size={[0.98, 0.42, 0.95]} r={0.05} pos={[0, 0.39, -0.05]} color="#1f5fbf" rough={0.5} />
-      <Box size={[1.0, 0.04, 0.97]} pos={[0, 0.6, -0.05]} color={METAL.nickel} metal={1} rough={0.35} />
-      <Cyl r={0.2} h={0.25} pos={[0, 0.74, -0.05]} color="#c9a64a" metal={0.85} rough={0.3} />
-      <group ref={knob} position={[0, 1.04, -0.05]}>
-        <mesh castShadow>
-          <cylinderGeometry args={[0.3, 0.33, 0.38, 18]} />
-          <meshStandardMaterial color="#202020" roughness={0.55} flatShading />
+      {/* patilha de fenólico com os terminais */}
+      <RBox size={[0.82, 0.04, 0.36]} r={0.015} pos={[0, 0.33, 0.43]} color={POT_BROWN} rough={0.75} />
+      {/* traseira creme (pista resistiva) e disco de fenólico */}
+      <Cyl r={0.45} h={0.1} pos={[0, 0.26, 0]} color="#e9e1c9" rough={0.8} seg={32} />
+      <Cyl r={0.49} h={0.04} pos={[0, 0.33, 0]} color={POT_BROWN} rough={0.75} seg={32} />
+      {/* caixa de aço e as 4 patilhas cravadas por baixo */}
+      <Cyl r={0.47} h={0.2} pos={[0, 0.45, 0]} color={POT_STEEL} metal={0.9} rough={0.35} seg={32} />
+      <Cyl r={0.36} h={0.012} pos={[0, 0.556, 0]} color="#a7adb4" metal={0.9} rough={0.4} seg={32} />
+      {[0.6, 2.2, 3.7, 5.3].map((a) => (
+        <Box key={a} size={[0.14, 0.13, 0.03]} pos={[Math.sin(a) * 0.48, 0.33, Math.cos(a) * 0.48]} rot={[0, a, 0]} color={POT_STEEL} metal={0.9} rough={0.35} />
+      ))}
+      {/* casquilho roscado */}
+      <Cyl r={0.19} h={0.3} pos={[0, 0.72, 0]} color={METAL.nickel} metal={0.9} rough={0.35} seg={24} />
+      <mesh geometry={potThreadGeo()} material={mat(METAL.nickel, 0.9, 0.3)} castShadow />
+      <group ref={rot}>
+        {/* veio de alumínio estriado (18 estrias) com a ranhura no topo */}
+        <Cyl r={0.15} h={0.12} pos={[0, 0.92, 0]} color={METAL.alu} metal={0.85} rough={0.3} seg={24} />
+        <mesh position={[0, 1.13, 0]} castShadow>
+          <cylinderGeometry args={[0.155, 0.155, 0.32, 18]} />
+          <meshStandardMaterial color={METAL.alu} metalness={0.85} roughness={0.35} flatShading />
         </mesh>
-        <Box size={[0.06, 0.02, 0.24]} pos={[0, 0.2, -0.15]} color="#f2f2f2" />
+        <Box size={[0.33, 0.13, 0.045]} pos={[0, 1.235, 0]} color="#5d6268" metal={0.6} rough={0.5} />
+        {knob && (
+          <group position={[0, 0.88, 0]}>
+            {/* saia, corpo estriado e tampa laranja com o risco */}
+            <Cyl r={0.42} r2={0.44} h={0.1} pos={[0, 0.05, 0]} color="#161616" rough={0.5} seg={36} />
+            <mesh position={[0, 0.33, 0]} castShadow>
+              <cylinderGeometry args={[0.3, 0.36, 0.46, 28]} />
+              <meshStandardMaterial color="#1a1a1a" roughness={0.5} flatShading />
+            </mesh>
+            <Cyl r={0.285} h={0.05} pos={[0, 0.575, 0]} color="#ff9a1f" rough={0.45} seg={28} />
+            <Box size={[0.07, 0.03, 0.22]} pos={[0, 0.6, -0.17]} color="#ff9a1f" rough={0.45} />
+            <Box size={[0.07, 0.42, 0.03]} pos={[0, 0.33, -0.335]} rot={[-0.13, 0, 0]} color="#ff9a1f" rough={0.45} />
+          </group>
+        )}
       </group>
     </group>
   )
@@ -626,7 +671,7 @@ export function BatteryModel({ part }) {
         const dir = i ? -1 : 1
         return (
           <group key={z}>
-            <Cell18650 pos={[-0.02 * dir, 1.1, z]} dir={dir} color={i ? '#1e7e3a' : '#1556b0'} />
+            <Cell18650 pos={[-0.02 * dir, 1.1, z]} dir={dir} color={part.config?.color || (i ? '#1e7e3a' : '#1556b0')} />
             <group position={[-dir * 3.6, 1.1, z]} scale={[1, 1.7, 1.7]}>
               <Spring pos={[0, 0, 0]} dir={dir} len={0.33} />
             </group>

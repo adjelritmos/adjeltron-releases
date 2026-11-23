@@ -145,11 +145,11 @@ const clipGeo = () =>
     [unitBox(), [-0.25, CY + 0.52, 0], [0, 0, 0.12], [0.36, 0.035, 0.3]],
   ])
 
-function CoinModel() {
+function CoinModel({ part }) {
   return (
     <group>
       <Wires id="coinPins" r={0.03} lines={COIN.pins.map((p) => [p.pos, [p.pos[0], CY + 0.05, p.pos[2]]])} />
-      <mesh geometry={coinHolderGeo()} material={mat('#161616', 0, 0.55)} castShadow receiveShadow />
+      <mesh geometry={coinHolderGeo()} material={mat(part?.config?.color || '#161616', 0, 0.55)} castShadow receiveShadow />
       <mesh position={[0, CY + 0.18, 0]} geometry={coinGeo()} material={mat('#cfd3d8', 1, 0.24)} castShadow />
       <Mark lines={[{ text: 'CR2032', font: 'bold 60px Arial', y: 92 }, { text: '3V  LITHIUM', font: 'bold 32px Arial', y: 150 }, { text: '+', font: 'bold 56px Arial', y: 210 }]} px={[256, 256]} pos={[0.2, CY + 0.502, 0]} rot={[-Math.PI / 2, 0, 0]} w={1.2} h={1.2} color="#5c6066" />
       <mesh geometry={clipGeo()} material={mat(METAL.nickel, 1, 0.3)} castShadow />

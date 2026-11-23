@@ -106,6 +106,9 @@ function arduinoPins() {
   for (let i = 0; i <= 7; i++) pins.push({ id: `D${i}`, pos: [2.9 - i * P, y, -2.45], kind: 'io' })
   for (let i = 8; i <= 13; i++) pins.push({ id: `D${i}`, pos: [2.9 - 8 * P - 0.2 - (i - 8) * P, y, -2.45], kind: 'io' })
   pins.push({ id: 'GND.1', label: 'GND', pos: [2.9 - 14 * P - 0.2, y, -2.45], kind: 'gnd' })
+  // SDA e SCL do cabeçalho (a seguir ao AREF): no Uno R3 são os mesmos pinos A4 e A5 (ver `internal`)
+  pins.push({ id: 'SDA', label: 'SDA (= A4)', pos: [2.9 - 16 * P - 0.2, y, -2.45], kind: 'io' })
+  pins.push({ id: 'SCL', label: 'SCL (= A5)', pos: [2.9 - 17 * P - 0.2, y, -2.45], kind: 'io' })
   ;[['3V3', 'p33'], ['5V', 'p5'], ['GND.2', 'gnd'], ['GND.3', 'gnd'], ['VIN', 'vin']].forEach(([id, kind], i) =>
     pins.push({ id, label: id.split('.')[0], pos: [-0.75 + i * P, y, 2.45], kind }),
   )
@@ -169,7 +172,7 @@ export const DEFS = {
     name: 'Arduino Uno',
     cat: 'mcu',
     board: true,
-    description: 'ATmega328P a 16 MHz. PWM: 3, 5, 6, 9, 10, 11. Analógicos A0–A5.',
+    description: 'ATmega328P a 16 MHz. PWM: 3, 5, 6, 9, 10, 11. Analógicos A0–A5. I2C: A4 (SDA) e A5 (SCL), também nos pinos SDA e SCL ao lado do AREF.',
     size: [6.86, 2, 5.34],
     mass: 36.6, // a mesma de antes (caixa de `size` × 0,5 g/cm³): colisores justos não mudam a massa
     // placa com os componentes e as fichas USB e de alimentação (saem 0,5 cm pela borda de −x)
@@ -179,7 +182,7 @@ export const DEFS = {
       { size: [1.46, 1.1, 0.9], pos: [-3.0, 1.71, 1.85] },
     ],
     pins: arduinoPins(),
-    internal: [['GND.1', 'GND.2', 'GND.3']],
+    internal: [['GND.1', 'GND.2', 'GND.3'], ['A4', 'SDA'], ['A5', 'SCL']],
     config: { usb: true },
     conn: 'female', // conectores fêmea: o jumper entra por cima
     view2d: { view: 'top', x: [-3.95, 3.55], z: [-2.8, 2.8] },
@@ -239,8 +242,8 @@ export const DEFS = {
   pot: {
     name: 'Potenciómetro 10 kΩ',
     cat: 'proto',
-    description: 'Divisor de tensão: A e B aos extremos (GND/5V), W (cursor) num pino analógico.',
-    size: [1.0, 1.4, 1.0],
+    description: 'Potenciómetro rotativo de 10 kΩ (B10K, linear), com veio estriado e botão. Divisor de tensão: A e B aos extremos (GND/5V), W (cursor) num pino analógico. Na simulação roda-se arrastando para cima/baixo ou com a roda do rato (no 3D e no 2D).',
+    size: [1.0, 1.5, 1.0],
     pins: [
       { id: 'A', pos: [-P, 0, 0.508], kind: 'pass' },
       { id: 'W', pos: [0, 0, 0.508], kind: 'pass' },
@@ -263,7 +266,7 @@ export const DEFS = {
   battery: {
     name: 'Bateria 2×18650',
     cat: 'power',
-    description: '7,4 V nominal (8,4 V cheia). Resistência interna ~0,15 Ω.',
+    description: '7,4 V nominal (8,4 V cheia). Resistência interna ~0,15 Ω. A cor da manga das pilhas escolhe-se nas propriedades.',
     size: [7.7, 2.1, 4.1],
     pins: [
       { id: '+', pos: [4.1, 1.0, -0.6], kind: 'bat+', conn: 'solder', dir: [1, 0, 0] },
@@ -283,6 +286,7 @@ export const DEFS = {
       { id: 'OUT+', pos: [1.95, 0.75, -0.6], kind: 'p5' },
       { id: 'OUT-', pos: [1.95, 0.75, 0.6], kind: 'gnd' },
     ],
+    internal: [['IN-', 'OUT-']], // módulo não isolado: a massa da entrada e a da saída são a mesma
     conn: 'solder', // fios soldados nos terminais
     view2d: { view: 'top', x: [-2.25, 2.25], z: [-1.15, 1.15] },
   },
@@ -532,7 +536,13 @@ export const LED_COLORS = {
 }
 
 export const RESISTOR_VALUES = [100, 220, 330, 470, 1000, 2200, 4700, 10000, 47000, 100000]
-export const fmtOhms = (r) => (r >= 1000 ? `${r / 1000}k` : `${r}`) + 'Ω'
+// valor livre (ex.: 1,5 Ω, 2,7 kΩ, 1,2 MΩ) com até 4 algarismos significativos
+export const OHM_UNITS = [[1, 'Ω'], [1e3, 'kΩ'], [1e6, 'MΩ']]
+export const ohmUnitOf = (r) => (r >= 1e6 ? 1e6 : r >= 1e3 ? 1e3 : 1)
+export const fmtOhms = (r) => {
+  const m = ohmUnitOf(r)
+  return `${Number((r / m).toPrecision(4))}${m === 1e6 ? 'M' : m === 1e3 ? 'k' : ''}Ω`
+}
 
 // paleta do Wokwi/Velxio (teclas 0–9 com um fio selecionado)
 // Paleta única de cores (fios, peças, materiais, botões…): as 10 primeiras são as cores dos

@@ -413,7 +413,7 @@ loop {
         const mo = ds3231.month()
         const y = ds3231.year()
         lcd.text(0, 1, \`Hora: \${doisDigitos(h)}:\${doisDigitos(mi)}:\${doisDigitos(s)}\`)
-        lcd.text(0, 2, \`\${nomeDia(ds3231.weekday())} \${doisDigitos(d)}/\${doisDigitos(mo)}/\${y}   \`)
+        lcd.text(0, 2, \`\${nomeDia(ds3231.weekday())} \${doisDigitos(d)}/\${doisDigitos(mo)}/\${y}  \`)
         lcd.text(0, 3, \`Temp: \${umaCasa(ds3231.temperature())} C\`)
         print(\`\${y}-\${doisDigitos(mo)}-\${doisDigitos(d)}T\${doisDigitos(h)}:\${doisDigitos(mi)}:\${doisDigitos(s)}\`)
     }

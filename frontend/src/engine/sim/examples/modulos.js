@@ -56,7 +56,7 @@ void loop() {
   doisDigitos(agora.month());
   lcd.print('/');
   lcd.print(agora.year());
-  lcd.print("   ");
+  lcd.print("  ");   // (até à coluna 20: mais um carácter passava para a linha 2, como no LCD real)
 
   lcd.setCursor(0, 3);
   lcd.print("Temp: ");

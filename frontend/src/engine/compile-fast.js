@@ -8,6 +8,7 @@ import { LIB_CLASSES } from './sim/libs/index.js'
 import { DEFS, boardProfile } from '../../../shared/components.js'
 import * as i18n from '../../../shared/i18n.js'
 import { SOURCE_LIBS } from './sim/srclibs/index.js'
+import { lintCpp } from './sim/cpp-lint.js'
 
 // hash de texto simples (FNV-1a 32 bits) — só para a cache
 function hash(s) {
@@ -90,13 +91,15 @@ export function translate(code, diagnostics = [], { prof, libs } = {}) {
 const cache = new Map()
 
 // → { ok, js, diagnostics, compiler, board, ms }
-export function compileFast(code, { board = 'arduino', libs = [] } = {}) {
+// lint: false quando um compilador C++ verdadeiro (clang++) já verificou o sketch
+export function compileFast(code, { board = 'arduino', libs = [], lint = true } = {}) {
   const prof = boardProfile(DEFS[board] ? board : 'arduino')
-  const key = `${i18n.getSharedLang()}:${prof.id}:${hash(code)}:${libs?.length ? hash(JSON.stringify(libs)) : ''}` // mensagens no idioma atual
+  const key = `${lint ? 'L' : ''}${i18n.getSharedLang()}:${prof.id}:${hash(code)}:${libs?.length ? hash(JSON.stringify(libs)) : ''}` // mensagens no idioma atual
   if (cache.has(key)) return { ...cache.get(key), cached: true }
   const t0 = performance.now()
-  const diagnostics = []
-  const js = translate(code, diagnostics, { prof, libs })
+  // C++ que o JavaScript deixaria passar (';' em falta, decimais num inteiro): ver sim/cpp-lint.js
+  const diagnostics = lint ? lintCpp(code) : []
+  const js = diagnostics.some((d) => d.severity === 'error') ? null : translate(code, diagnostics, { prof, libs })
   const result = { ok: !!js, js, diagnostics, compiler: null, board: prof.mcu, ms: Math.round(performance.now() - t0) }
   if (cache.size > 200) cache.clear()
   cache.set(key, result)

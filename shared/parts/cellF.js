@@ -25,8 +25,8 @@ export const CELL_DEFS = [
     // suporte com a pilha (os fios soltos não colidem)
     collider: { size: [5.8, 1.56, 1.7], pos: [0, 0.78, 0] },
     pins: [
-      { id: '+', label: '+ (vermelho)', pos: [4.4, 0.2, -0.4], kind: 'bat+', conn: 'solder', dir: [1, 0, 0] },
-      { id: '-', label: '− (preto)', pos: [4.4, 0.2, 0.4], kind: 'bat-', conn: 'solder', dir: [1, 0, 0] },
+      { id: '+', label: '+ (vermelho)', pos: [3.7, 0.2, -0.4], kind: 'bat+', conn: 'solder', dir: [1, 0, 0] },
+      { id: '-', label: '− (preto)', pos: [3.7, 0.2, 0.4], kind: 'bat-', conn: 'solder', dir: [1, 0, 0] },
     ],
     config: { charge: 90, color: '#1b2433' },
     fields: [CHARGE, { key: 'color', label: 'Cor da pilha', type: 'color' }],
@@ -45,8 +45,8 @@ export const CELL_DEFS = [
       { id: '+', label: '+ (face de cima)', pos: [-4 * PITCH, 0, 0], kind: 'bat+' },
       { id: '-', label: '−', pos: [4 * PITCH, 0, 0], kind: 'bat-' },
     ],
-    config: { charge: 90 },
-    fields: [CHARGE],
+    config: { charge: 90, color: '#161616' },
+    fields: [CHARGE, { key: 'color', label: 'Cor do suporte', type: 'color' }],
     cell: { kind: 'coin', rint: 25, imax: 0.015 },
     view2d: { view: 'top', x: [-1.25, 1.25], z: [-1.25, 1.25] },
   },

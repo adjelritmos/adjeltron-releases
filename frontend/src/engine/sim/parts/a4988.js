@@ -14,6 +14,18 @@ export function microOf(ms1, ms2, ms3) {
   return { 0: 1, 1: 2, 2: 4, 3: 8, 7: 16 }[k] ?? 16
 }
 
+// Nível de STEP/DIR antes da primeira escrita. Vindo de um pino do Arduino conta o registo de
+// saída do pino (e não a tensão): um pino ainda em INPUT flutua, mas quando passa a OUTPUT sai
+// a LOW — sem isto perdia-se o 1.º impulso de quem só faz pinMode() no primeiro passo
+// (AccelStepper) e o sentido ficava trocado quando DIR nunca chega a ser escrito a HIGH.
+export function startLevel(ctx, pin) {
+  const ns = ctx.boardPinsOn(pin)
+  if (!ns.length) return levelOf(ctx, pin)
+  // só as mudanças ficam registadas: antes da 1.ª escrita deste ms estava o nível contrário
+  const first = ctx.pinLog.find((ev) => ns.includes(ev[1]))
+  return first ? 1 - first[2] : ctx.boardPins[ns[0]].out ? 1 : 0
+}
+
 export default {
   type: 'a4988',
   stamp({ cond, s }) {
@@ -40,7 +52,7 @@ export default {
   },
   step(ctx) {
     const { s, log } = ctx
-    if (s.pos === undefined) Object.assign(s, { pos: 0, stepLv: levelOf(ctx, 'STEP'), dirLv: levelOf(ctx, 'DIR'), lost: 0 })
+    if (s.pos === undefined) Object.assign(s, { pos: 0, stepLv: startLevel(ctx, 'STEP'), dirLv: startLevel(ctx, 'DIR'), lost: 0 })
     const evs = takeEvents(ctx, ['STEP', 'DIR'])
     const inc = 16 / (s.micro || 1)
     let moved = 0

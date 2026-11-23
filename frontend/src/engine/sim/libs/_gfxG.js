@@ -86,7 +86,11 @@ export function spiPart(env, { types, label, cs, dc, mosi, sck, names = {} }) {
   const mo = mosi ?? hw.mosi
   const sk = sck ?? hw.sck
   const has = (pin, n) => env.pinsOf(p.id, pin).includes(n)
-  if (dc != null && dc >= 0 && !has(N.dc, dc)) env.warnOnce(`spidc${label}`, i18n.m(`${label}: ${N.dc} do ecrã não está no pino ${dc} — sem D/C os comandos são lidos como dados e o ecrã não mostra nada.`, `${label}: the display's ${N.dc} is not on pin ${dc} — without D/C commands are read as data and the screen shows nothing.`))
+  // sem D/C no pino certo o controlador lê os comandos como dados: o ecrã não mostra nada
+  if (dc != null && dc >= 0 && !has(N.dc, dc)) {
+    env.warnOnce(`spidc${label}`, i18n.m(`${label}: ${N.dc} do ecrã não está no pino ${dc} — sem D/C os comandos são lidos como dados e o ecrã não mostra nada.`, `${label}: the display's ${N.dc} is not on pin ${dc} — without D/C commands are read as data and the screen shows nothing.`))
+    return null
+  }
   if (!has(N.mosi, mo) || !has(N.sck, sk)) {
     env.warnOnce(`spibus${label}`, i18n.m(`${label}: ${N.mosi} tem de ir ao pino ${mo} e ${N.sck} ao ${sk}${mosi != null ? ' (pinos do construtor)' : ' (SPI por hardware da placa)'}. O ecrã não recebe nada.`, `${label}: ${N.mosi} must go to pin ${mo} and ${N.sck} to ${sk}${mosi != null ? ' (constructor pins)' : ' (the board\'s hardware SPI)'}. The display receives nothing.`))
     return null

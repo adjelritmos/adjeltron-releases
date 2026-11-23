@@ -277,7 +277,7 @@ void loop() {
     motor(0);
     return;
   }
-  long alvo = alvos[indice] * POR_GRAU;
+  long alvo = (long)(alvos[indice] * POR_GRAU);
   long erro = alvo - enc.read();
   // P com saturação: longe do alvo vai depressa, perto abranda
   int pwm = constrain(erro / 2, -255, 255);
@@ -365,7 +365,7 @@ long lerD() { noInterrupts(); long v = contD; interrupts(); return v; }
 
 void andar(float cm, int vel) {
   long e0 = lerE(), d0 = lerD();
-  long alvo = cm * POR_CM;
+  long alvo = (long)(cm * POR_CM);
   while (true) {
     long e = lerE() - e0, d = lerD() - d0;
     if ((e + d) / 2 >= alvo) break;

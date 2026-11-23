@@ -18,6 +18,15 @@ const SG_ITEMS = [
   { key: 'duty', label: 'Duty (quadrada)', min: 1, max: 99, step: 1, unit: '%' },
 ]
 
+// manípulo do gerador: regula o parâmetro escolhido com as teclas ◀ ▶ (sel)
+export const SG_PARAMS = ['freq', 'amp', 'offset', 'duty']
+const SG_KNOB = {
+  freq: { key: 'freq', min: 0.1, max: 500, step: 0.1, log: true },
+  amp: { key: 'amp', min: 0, max: 10, step: 0.05, wheel: 0.1 },
+  offset: { key: 'offset', min: -10, max: 10, step: 0.05, wheel: 0.1 },
+  duty: { key: 'duty', min: 1, max: 99, step: 1 },
+}
+
 export const INSTR_DEFS = [
   {
     type: 'sigGen',
@@ -37,6 +46,14 @@ export const INSTR_DEFS = [
       { key: 'duty', label: 'Duty (quadrada)', type: 'number', min: 1, max: 99, step: 1, unit: '%' },
     ],
     interactive: { kind: 'fields', items: SG_ITEMS },
+    // no aparelho (3D e 2D): tecla azul = forma de onda; ◀ ▶ = parâmetro do manípulo;
+    // manípulo = arrastar para cima/baixo ou roda do rato (Shift: passo fino)
+    controls: [
+      { kind: 'knob', pos: [1.1, 1.5, 1.55], r: 0.55, param: (inp) => SG_KNOB[inp.sel] || SG_KNOB.freq },
+      { kind: 'cycle', pos: [-1.2, 1.5, 1.62], r: 0.32, key: 'wave', options: WAVES.map((w) => w[0]) },
+      { kind: 'cycle', pos: [-0.55, 1.5, 1.62], r: 0.32, key: 'sel', options: SG_PARAMS, dir: -1 },
+      { kind: 'cycle', pos: [0.1, 1.5, 1.62], r: 0.32, key: 'sel', options: SG_PARAMS },
+    ],
     view2d: { view: 'top', x: [-1.95, 2.1], z: [-2.35, 2.35] },
   },
   {
@@ -61,6 +78,13 @@ export const INSTR_DEFS = [
         { key: 'out', label: 'Saída', options: [[1, 'ligada'], [0, 'desligada']] },
       ],
     },
+    // no aparelho: manípulos de tensão e de limite de corrente (arrastar ou roda do rato;
+    // Shift = passo fino) e a tecla vermelha liga/desliga a saída
+    controls: [
+      { kind: 'knob', pos: [-0.6, 1.5, 1.55], r: 0.45, key: 'volts', min: 0, max: 30, step: 0.1, wheel: 0.5 },
+      { kind: 'knob', pos: [0.4, 1.5, 1.55], r: 0.45, key: 'ilim', min: 0.01, max: 5, step: 0.01, wheel: 0.05 },
+      { kind: 'toggle', pos: [1.25, 1.5, 1.62], r: 0.35, key: 'out', values: [1, 0] },
+    ],
     view2d: { view: 'top', x: [-1.95, 2.1], z: [-2.35, 2.35] },
   },
 ]

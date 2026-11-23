@@ -9,6 +9,24 @@ import * as i18n from '../../../../../shared/i18n.js'
 export const NEO_TYPES = new Set(['neopixelStrip', 'neopixelRing'])
 const V_MAX = 6.0
 
+// peças WS2812B que recebem os dados do pino `pin` da placa: DIN na rede do pino ou — como se
+// recomenda no real — atrás de uma resistência em série (≤ 2,2 kΩ; tipicamente 330–470 Ω)
+export function neoTargets(env, pin) {
+  const out = env.partsOnPin(pin).filter((q) => NEO_TYPES.has(q.type)).map((part) => ({ part, thru: false }))
+  const nets = env.circuit?.nets
+  const net = env.netOfPin?.(pin)
+  if (!nets || net == null) return out
+  for (const r of env.partsOnPin(pin, 'resistor')) {
+    if (+(r.config?.ohms ?? 220) > 2200) continue
+    const a = nets.netOf(r.id, '1')
+    const b = nets.netOf(r.id, '2')
+    const far = a === net ? b : a
+    if (far === net) continue
+    for (const q of nets.partsOnNet(far)) if (NEO_TYPES.has(q.type) && nets.netOf(q.id, 'DIN') === far && !out.some((o) => o.part === q)) out.push({ part: q, thru: true })
+  }
+  return out
+}
+
 // (exportado: outras peças WS2812B — LED único, matriz — usam o mesmo comportamento; ver group-g-misc.js)
 export function make(type, name) {
   const n = DEFS[type]?.leds ?? (type === 'neopixelRing' ? 16 : 8)
@@ -45,7 +63,8 @@ export function make(type, name) {
       const msgs = take(s)
       if (!msgs.length) return
       for (const m of msgs) {
-        if (!m.via && !w.DIN.includes(m.pin)) {
+        // m.thru: os dados chegam ao DIN por uma resistência em série (ver neoTargets)
+        if (!m.via && !m.thru && !w.DIN.includes(m.pin)) {
           if (!s._warnDin) {
             s._warnDin = true
             log(

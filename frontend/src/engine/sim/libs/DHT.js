@@ -8,11 +8,12 @@ const MIN_INTERVAL_US = 2000000
 // 5 bytes como o sensor os envia
 function frame(type, t, h) {
   if (type === 'dht11') {
-    const hi = Math.round(Math.max(0, Math.min(99, h)))
-    const ti = Math.max(0, Math.min(60, t))
-    return [hi, 0, Math.floor(ti), Math.round((ti % 1) * 10), 0]
+    // DHT11: 20–90 % HR e 0–50 °C, só valores inteiros (os bytes decimais vão a 0)
+    const hi = Math.round(Math.max(20, Math.min(90, h)))
+    const ti = Math.round(Math.max(0, Math.min(50, t)))
+    return [hi, 0, ti, 0, 0]
   }
-  const hh = Math.round(Math.max(0, Math.min(99.9, h)) * 10)
+  const hh = Math.round(Math.max(0, Math.min(100, h)) * 10)
   const tt = Math.round(Math.abs(Math.max(-40, Math.min(80, t))) * 10)
   return [hh >> 8, hh & 255, ((tt >> 8) & 0x7f) | (t < 0 ? 0x80 : 0), tt & 255, 0]
 }

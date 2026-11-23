@@ -66,7 +66,8 @@ export default {
         // ---------- versão SPI de 7 pinos (GND, VCC, D0 = SCK, D1 = MOSI, RES, DC, CS) ----------
         _spiDev(quiet) {
           const o = this.spi
-          const p = env.partsOnPin(o.cs, 'ssd1306spi')[0] || null
+          // sem um begin() bem-sucedido (CS, D0/D1 ou DC mal ligados) o ecrã não recebe nada
+          const p = this._spiOk ? env.partsOnPin(o.cs, 'ssd1306spi')[0] || null : null
           if (!p || !env.powered(p.id)) {
             if (!quiet && this._spiOk) env.warnOnce('oledspilost', i18n.m('OLED SPI deixou de responder (sem alimentação ou CS desligado).', 'SPI OLED stopped responding (no power or CS disconnected).'))
             return null
@@ -74,6 +75,7 @@ export default {
           return p
         }
         _spiBegin() {
+          this._spiOk = false
           env.rt.t += 15000
           const o = this.spi
           const p = env.partsOnPin(o.cs, 'ssd1306spi')[0] || null
@@ -89,7 +91,10 @@ export default {
             env.warnOnce('oledspibus', i18n.m(`OLED SPI: D1 (dados) tem de ir ao pino ${mo} e D0 (relógio) ao ${sk}${o.mosi != null ? ' (pinos do construtor)' : ' (SPI por hardware)'}. O ecrã não recebe nada.`, `SPI OLED: D1 (data) must go to pin ${mo} and D0 (clock) to ${sk}${o.mosi != null ? ' (constructor pins)' : ' (hardware SPI)'}. The display receives nothing.`))
             return false
           }
-          if (!has('DC', o.dc)) env.warnOnce('oledspidc', i18n.m(`OLED SPI: DC do ecrã não está no pino ${o.dc} — os comandos são lidos como dados e o ecrã fica apagado.`, `SPI OLED: the display's DC is not on pin ${o.dc} — commands are read as data and the screen stays blank.`))
+          if (!has('DC', o.dc)) {
+            env.warnOnce('oledspidc', i18n.m(`OLED SPI: DC do ecrã não está no pino ${o.dc} — os comandos são lidos como dados e o ecrã fica apagado.`, `SPI OLED: the display's DC is not on pin ${o.dc} — commands are read as data and the screen stays blank.`))
+            return false
+          }
           if (o.rst >= 0 && !has('RES', o.rst)) env.warnOnce('oledspirst', i18n.m(`OLED SPI: RES do ecrã não está no pino ${o.rst} (o SSD1306 SPI precisa de um impulso de reset ao arrancar).`, `SPI OLED: the display's RES is not on pin ${o.rst} (the SPI SSD1306 needs a reset pulse at startup).`))
           else if (o.rst < 0 && !(env.vd(p.id, 'RES', 'GND') > 2)) env.warnOnce('oledspirst2', i18n.m('OLED SPI: sem pino de reset no construtor, RES tem de estar ligado a VCC.', 'SPI OLED: with no reset pin in the constructor, RES must be connected to VCC.'))
           if (!env.powered(p.id)) {

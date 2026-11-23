@@ -1,6 +1,8 @@
 // L293D: 4 meias-pontes (push-pull) com enable por pares. Como no L298N, as entradas
-// contam pela tensão média (PWM): saída = (VCC2 − perdas) × A × EN através de ~1,5 Ω
-// por transístor (≈1,4 V perdidos de cada lado a 600 mA). EN a LOW → saídas em alta
+// contam pela tensão média (PWM). Saídas bipolares (Darlington), como na folha de dados:
+// em HIGH a saída fica a VCC2 − 1,1 V e em LOW a 0,9 V, mais ~0,5 Ω de cada lado
+// (a 600 mA: VCC2 − 1,4 V e 1,2 V — os valores típicos da TI). Um motor entre duas saídas
+// perde por isso ~2 V com pouca corrente e ~2,6 V a 600 mA. EN a LOW → saídas em alta
 // impedância (o motor roda livre). Proteção térmica: com mais de ~0,6 A por canal durante
 // segundos o chip aquece e desliga-se (volta quando arrefece).
 import { boardIoOnNet } from './group-c-util.js'
@@ -12,8 +14,15 @@ const CH = [
   ['EN34', '3A', '3Y'],
   ['EN34', '4A', '4Y'],
 ]
-const R_OUT = 1.5
-const V_LOSS = 0.5 // queda fixa dos transístores (além da resistiva)
+const R_OUT = 0.5
+const V_HI = 1.1 // queda fixa do transístor de cima (saída em HIGH)
+const V_LO = 0.9 // tensão de saturação do de baixo (saída em LOW)
+// tensão em vazio de uma saída com a entrada a `a` (0..1, duty do PWM)
+const outV = (v2, a) => {
+  const hi = Math.max(0, v2 - V_HI)
+  const lo = Math.min(V_LO, hi)
+  return lo + (hi - lo) * a
+}
 
 const INS = ['EN12', 'EN34', '1A', '2A', '3A', '4A']
 // fração "ligada" de uma entrada: duty do PWM (ou 0/1) se vier de um pino do Arduino
@@ -25,12 +34,17 @@ export default {
   stamp({ s, cond, src, vd }) {
     cond('VCC1', 'GND', s.powered ? 1 / 200 : 1e-6) // ~25 mA de lógica
     cond('VCC2', 'GND', 1 / 1000)
+    // entradas soltas: no real ficam indefinidas; aqui um pull-down fraco (1 MΩ) dá-lhes LOW,
+    // como diz o diagnóstico (sem enable as saídas ficam desligadas)
+    for (const pin of INS) cond(pin, 'GND', 1e-6)
     if (!s.powered || s.hot) return
-    const vs = Math.max(0, vd('VCC2', 'GND') - V_LOSS)
+    const v2 = vd('VCC2', 'GND')
     for (const [en, a, y] of CH) {
       const e = frac(s, vd, en)
       if (e < 0.01) continue
-      src(y, 'GND', vs * frac(s, vd, a), R_OUT / e)
+      // PWM no enable: conta a tensão média (duty × tensão), como no L298N — a velocidade do
+      // motor acompanha o analogWrite() do EN
+      src(y, 'GND', outV(v2, frac(s, vd, a) * e), R_OUT)
     }
   },
   update({ s, vd, set }) {
@@ -56,17 +70,17 @@ export default {
     }
     if (!s.powered) return
     let worst = 0
-    const vs = Math.max(0, vd('VCC2', 'GND') - V_LOSS)
+    const v2 = vd('VCC2', 'GND')
     s.i = CH.map(([en, a, y]) => {
       // corrente na saída: tensão em vazio menos a real, sobre a resistência interna
       const e = frac(s, vd, en)
       if (s.hot || e < 0.01) return 0
-      const i = (Math.abs(vs * frac(s, vd, a) - vd(y, 'GND')) * e) / R_OUT
+      const i = Math.abs(outV(v2, frac(s, vd, a) * e) - vd(y, 'GND')) / R_OUT
       worst = Math.max(worst, i)
       return i
     })
     // modelo térmico simples (DIP-16 no ar: ~1 W de dissipação continua)
-    const p = s.i.reduce((a, i) => a + i * i * R_OUT * 2 + i * V_LOSS, 0)
+    const p = s.i.reduce((a, i) => a + i * i * R_OUT + (i * (V_HI + V_LO)) / 2, 0)
     s.temp = (s.temp ?? 25) + (25 + p * 80 - (s.temp ?? 25)) / 4000 // τ ≈ 4 s
     s.overI = worst > 0.65 ? (s.overI || 0) + 1 : 0 // o arranque (rotor parado) pede mais durante alguns ms
     if (s.overI > 400 && !s.warned) {

@@ -9,13 +9,13 @@ export default {
   stamp({ cond, src, s, input, vd }) {
     if (s.damaged) return cond('VCC', 'GND', 1e-9)
     cond('VCC', 'GND', 1 / 1000) // ~5 mA
-    if (!s.powered) return
+    if (!s.powered) return cond('AOUT', 'GND', 1e-5) // sem alimentação a saída descarrega para o GND (~0 V)
     const h = Math.max(0, Math.min(100, input.value ?? 30))
     const vreg = Math.min(3.3, vd('VCC', 'GND') - 0.1)
     s.ao = ((2.8 - 0.0155 * h) * vreg) / 3.3 + (s.n || 0)
     src('AOUT', 'GND', s.ao, 1000)
   },
-  update: (ctx) => modulePower(ctx, 3.3, 5.5, 6.5),
+  update: (ctx) => modulePower(ctx, 3.0, 5.5, 6.5),
   step({ s, invalidate, timeUs }) {
     if (timeUs % 20000 === 0 && s.powered) {
       s.n = noise(0.006)

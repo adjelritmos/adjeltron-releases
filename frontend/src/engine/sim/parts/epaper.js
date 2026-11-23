@@ -1,6 +1,6 @@
 // Módulos e-paper (ver shared/parts/epaper.js). A imagem (s.img: 1 índice de paleta por ponto,
 // já na orientação da face) é escrita pela biblioteca GxEPD2 e fica no ecrã mesmo sem
-// alimentação. Durante uma atualização (s.ref = { t0, dur, full }) o pino BUSY fica a HIGH
+// alimentação. Durante uma atualização (s.ref = { t0, dur, full }) o pino BUSY fica ativo (HIGH; LOW nos UC81xx)
 // e o browser mostra o piscar (live.ref = { p: progresso 0..1, full }).
 // Para o browser: live.fb = RLE de pares Uint16 [n.º de pontos, índice] (base64), enviado só
 // durante ~1 s após cada mudança (o browser guarda a última imagem por live.ver).
@@ -20,7 +20,8 @@ function make(type) {
       cond('VCC', 'GND', (s.ref ? 0.008 : 0.0002) / 5)
       if (s.powered) {
         const v = Math.min(3.3, vd('VCC', 'GND'))
-        src('BUSY', 'GND', s.ref ? v : 0, 1000)
+        // SSD16xx: BUSY a HIGH enquanto atualiza; UC8179/UC8159 (7,5" e 5,65"): ativo a LOW
+        src('BUSY', 'GND', !!s.ref !== !!g.busyLow ? v : 0, 1000)
       }
     },
     update: (ctx) => modulePower(ctx, 2.3, 5.5, 6.5),

@@ -24,7 +24,7 @@ export default {
     { key: 'taper', label: 'Curva', type: 'select', options: [['B', 'B — linear'], ['A', 'A — logarítmica (áudio)']] },
     { key: 'value', label: 'Posição inicial', type: 'range', min: 0, max: 100, step: 1, unit: '%' },
   ],
-  interactive: { kind: 'slider', label: 'Posição', unit: '%', min: 0, max: 100, step: 1, default: 50 },
+  interactive: { kind: 'slider', label: 'Posição', unit: '%', min: 0, max: 100, step: 1, default: 50, knob: true, wheelStep: 2 },
   collider: [
     { size: [1.65, 0.75, 1.65], pos: [0, 0.75, 0] },
     { size: [0.6, 2.0, 0.6], pos: [0, 2.1, 0] },

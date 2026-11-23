@@ -17,16 +17,23 @@ export default {
   stamp({ s, cond, src, vd }) {
     cond('VCC', 'GND.1', s.logic ? 1 / 2500 : 1e-6)
     cond('VM', 'GND.1', 1 / 20000)
+    // todas as entradas (e o STBY) têm pull-down interno de 200 kΩ: soltas leem LOW
+    for (const pin of INS) cond(pin, 'GND.1', 1 / 200000)
+    s.e = null
     if (!s.logic || s.hot || lv(s, vd, 'STBY') < 0.5) return
     const vm = Math.max(0, vd('VM', 'GND.1'))
-    for (const [, pwm, in1, in2, o1, o2] of CH) {
+    // tensões aplicadas (para a corrente em step() usar as mesmas que o solver resolveu)
+    s.e = CH.map(([, pwm, in1, in2, o1, o2]) => {
       const a = lv(s, vd, in1) >= 0.5
       const b = lv(s, vd, in2) >= 0.5
-      if (!a && !b) continue // roda livre
+      if (!a && !b) return null // roda livre
       const d = a && b ? 0 : lv(s, vd, pwm)
-      src(o1, 'GND.1', a && !b ? vm * d : 0, R_SIDE)
-      src(o2, 'GND.1', b && !a ? vm * d : 0, R_SIDE)
-    }
+      const e1 = a && !b ? vm * d : 0
+      const e2 = b && !a ? vm * d : 0
+      src(o1, 'GND.1', e1, R_SIDE)
+      src(o2, 'GND.1', e2, R_SIDE)
+      return [e1, e2]
+    })
   },
   update({ s, vd, set }) {
     const v = vd('VCC', 'GND.1')
@@ -48,15 +55,11 @@ export default {
       invalidate()
     }
     if (!s.logic) return
-    const vm = Math.max(0, vd('VM', 'GND.1'))
-    // corrente real: pela queda nos MOSFET de cada saída que está a conduzir
-    s.i = CH.map(([, pwm, in1, in2, o1]) => {
-      const a = lv(s, vd, in1) >= 0.5
-      const b = lv(s, vd, in2) >= 0.5
-      if (s.hot || lv(s, vd, 'STBY') < 0.5 || (!a && !b)) return 0
-      const d = a && b ? 0 : lv(s, vd, pwm)
-      const e1 = a && !b ? vm * d : 0
-      return Math.abs(e1 - vd(o1, 'GND.1')) / R_SIDE
+    // corrente real: pela queda nos MOSFET de cada saída que está a conduzir (com as tensões
+    // que o solver usou — senão cada mudança de sentido ou de PWM parecia um pico de dezenas de A)
+    s.i = CH.map(([, , , , o1, o2], n) => {
+      const e = s.e?.[n]
+      return !e || s.hot ? 0 : Math.max(Math.abs(e[0] - vd(o1, 'GND.1')), Math.abs(e[1] - vd(o2, 'GND.1'))) / R_SIDE
     })
     const worst = Math.max(...s.i)
     s.temp = (s.temp ?? 25) + (25 + s.i.reduce((t, i) => t + i * i * 0.5, 0) * 90 - (s.temp ?? 25)) / 3000
@@ -65,7 +68,9 @@ export default {
       s.warned = true
       log(i18n.m(`⚠ TB6612FNG: ${worst.toFixed(2)} A num canal (máx. 1,2 A contínuos). Vai aquecer — para motores maiores use outro driver.`, `⚠ TB6612FNG: ${worst.toFixed(2)} A on a channel (max 1.2 A continuous). It will heat up — for bigger motors use another driver.`), 'warn')
     }
-    if (!s.hot && (s.temp > 150 || worst > 3.2)) {
+    // pico: só conta se durar (inverter o sentido dá um pico curto, como no real)
+    s.peak = worst > 3.2 ? (s.peak || 0) + 1 : 0
+    if (!s.hot && (s.temp > 150 || s.peak > 20)) {
       s.hot = true
       s.hotMs = 0
       invalidate()

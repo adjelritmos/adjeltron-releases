@@ -14,6 +14,7 @@ export default {
     if (s.damaged) return cond('VCC', 'GND', 1e-9)
     cond('VCC', 'GND', 0.004 / 5)
     if (s.powered) src('OUT', 'GND', (s.frac ?? 0.5) * vd('VCC', 'GND'), 470)
+    else cond('OUT', 'GND', 1e-5) // sem alimentação a saída descarrega para o GND (~0 V)
   },
   update: (ctx) => modulePower(ctx, 3.0, 5.6, 6.5),
   step({ s, input, invalidate }) {

@@ -13,6 +13,27 @@
 import { m } from './i18n.js'
 import { DEFS, mountsOf } from './components.js'
 
+// peça pousada numa superfície virada para cima (esfera em cima de uma placa/rampa): na física é
+// um corpo próprio (rola, cai), com o seu modo de física, em vez de soldada ao pai
+export function restsOnSurface(part, parts) {
+  const d = DEFS[part?.type]
+  if (!d?.rests || !part.parent) return false
+  if (!(typeof d.rests === 'function' ? d.rests(part.config || {}) : d.rests)) return false
+  const par = parts.find((q) => q.id === part.parent.id)
+  const mt = par && mountsOf(par)[part.parent.mount]
+  return !!mt?.plane && !mt.servo && !mt.slide && !(mt.rot || []).some((v) => Math.abs(v) > 1e-6)
+}
+// peça que manda na física desta (a raiz da montagem, ou ela própria se estiver pousada)
+export function physicsRootOf(part, parts) {
+  let p = part
+  for (let n = 0; n < 64 && p?.parent && !restsOnSurface(p, parts); n++) {
+    const par = parts.find((q) => q.id === p.parent.id)
+    if (!par) break
+    p = par
+  }
+  return p
+}
+
 export const PHYSICS_MODES = [
   ['auto', 'Automática'],
   ['dynamic', 'Livre: cai, tomba e choca'],

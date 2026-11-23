@@ -28,7 +28,7 @@ export async function compileSketch(code, { board = 'arduino', libs = [] } = {})
     /* sem verificação: fica só o tradutor */
   }
   const errors = check.diagnostics.some((d) => d.severity === 'error')
-  const fast = errors ? null : compileFast(code, { board, libs })
+  const fast = errors ? null : compileFast(code, { board, libs, lint: !check.available })
   return {
     ok: !!fast?.ok,
     js: fast?.js || null,

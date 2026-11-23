@@ -221,12 +221,59 @@ export const inputOf = (id) => simRef.inputs[id] || {}
 // ---------- materiais e geometrias "de eletrónica" ----------
 // máscara de solda: plástico com verniz brilhante por cima (clearcoat), partilhado por cor
 const PCBMAT = new Map()
+// máscara de solda "manchada": a tinta verde/azul de uma placa real não é uniforme (espessura
+// variável por cima das pistas e do cobre). Ruído cinzento muito claro (≈ 0,9…1,0) que multiplica
+// a cor, em mosaico — dá vida à placa sem mudar a cor de base
+let MOTTLE = null
+function mottleTex() {
+  if (MOTTLE) return MOTTLE
+  const N = 128
+  const c = Object.assign(document.createElement('canvas'), { width: N, height: N })
+  const x = c.getContext('2d')
+  x.fillStyle = '#ffffff'
+  x.fillRect(0, 0, N, N)
+  // manchas grandes e suaves + grão fino
+  // posições pseudoaleatórias (em progressão aritmética alinhavam-se em diagonais)
+  const rnd = (k) => {
+    const h = Math.sin(k * 91.345 + 17.17) * 43758.5453
+    return h - Math.floor(h)
+  }
+  for (let i = 0; i < 70; i++) {
+    const r = 6 + rnd(i * 3) * 18
+    const px = rnd(i * 3 + 1) * N
+    const py = rnd(i * 3 + 2) * N
+    for (const [dx, dy] of [[0, 0], [-N, 0], [N, 0], [0, -N], [0, N]]) {
+      const g = x.createRadialGradient(px + dx, py + dy, 0, px + dx, py + dy, r)
+      g.addColorStop(0, `rgba(0,0,0,${0.018 + rnd(i * 7) * 0.022})`)
+      g.addColorStop(1, 'rgba(0,0,0,0)')
+      x.fillStyle = g
+      x.fillRect(px + dx - r, py + dy - r, r * 2, r * 2)
+    }
+  }
+  const img = x.getImageData(0, 0, N, N)
+  // grão fino com hash por píxel (x, y): um hash do índice linear fazia riscas diagonais
+  for (let y = 0; y < N; y++)
+    for (let xx = 0; xx < N; xx++) {
+      const h = Math.sin(xx * 127.1 + y * 311.7) * 43758.5453
+      const n = (h - Math.floor(h) - 0.5) * 9
+      const i = (y * N + xx) * 4
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = Math.max(0, Math.min(255, img.data[i] + n))
+    }
+  x.putImageData(img, 0, 0)
+  MOTTLE = new THREE.CanvasTexture(c)
+  MOTTLE.colorSpace = THREE.SRGBColorSpace
+  MOTTLE.wrapS = MOTTLE.wrapT = THREE.RepeatWrapping
+  MOTTLE.repeat.set(3, 3)
+  MOTTLE.anisotropy = 8
+  return MOTTLE
+}
+
 export function pcbMat(color) {
   let m = PCBMAT.get(color)
   if (!m)
     PCBMAT.set(
       color,
-      (m = new THREE.MeshPhysicalMaterial({ color, roughness: 0.55, metalness: 0, clearcoat: 0.7, clearcoatRoughness: 0.22, envMapIntensity: 0.8 })),
+      (m = new THREE.MeshPhysicalMaterial({ color, map: mottleTex(), roughness: 0.55, metalness: 0, clearcoat: 0.7, clearcoatRoughness: 0.22, envMapIntensity: 0.8 })),
     )
   return m
 }

@@ -1,10 +1,13 @@
 // Driver DRV8825. Sem VDD: a lógica vem de um regulador interno a partir do VMOT (8,2–45 V),
 // mas o GND tem de ser comum ao Arduino. Cada flanco ascendente em STEP avança 1 micropasso
-// (até 1/32). Na placa Pololu: EN e M0–M2 com pull-down de 100 kΩ, SLEEP com pull-up
-// (≈10 kΩ ao regulador de 3,3 V), RESET a flutuar (ligue-o a SLEEP ou a 5V), FAULT em
-// dreno aberto (alto sem avaria). Posição em s.pos em 1/16 de passo (como o A4988), para o
+// (até 1/32). Na placa Pololu: EN e M0–M2 com pull-down de 100 kΩ; nSLEEP (1 MΩ) e nRESET
+// (100 kΩ) também têm pull-down DENTRO do chip — ao contrário do A4988, soltos ficam a LOW e o
+// driver não anda: têm os dois de ir a HIGH (5V ou 3,3 V). FAULT é dreno aberto (alto sem
+// avaria) e a placa liga-o a SLEEP por 10 kΩ: com SLEEP a HIGH lê-se HIGH em FAULT, e numa
+// base feita para o A4988 (onde este pino recebe 5 V) é essa resistência que puxa o SLEEP. Posição em s.pos em 1/16 de passo (como o A4988), para o
 // NEMA 17 e o motor biaxial a lerem da mesma maneira.
 import { takeEvents, levelOf } from './_groupD.js'
+import { startLevel } from './a4988.js'
 import * as i18n from '../../../../../shared/i18n.js'
 
 const MAX_FULL_PER_MS = 2.2
@@ -16,13 +19,13 @@ export function microOf8825(m0, m1, m2) {
 
 export default {
   type: 'drv8825',
-  stamp({ cond, src, s }) {
+  stamp({ cond, s }) {
     if (s.damaged) return
     for (const p of ['EN', 'M0', 'M1', 'M2']) cond(p, 'GND', 1e-5)
-    cond('RST', 'GND', 1e-7)
+    cond('RST', 'GND', 1e-5) // nRESET: pull-down interno de 100 kΩ
+    cond('SLP', 'GND', 1e-6) // nSLEEP: pull-down interno de 1 MΩ
+    cond('FLT', 'SLP', 1e-4) // 10 kΩ da placa entre FAULT e SLEEP
     if (s.vok) {
-      src('SLP', 'GND', 3.3, 10000)
-      src('FLT', 'GND', 3.3, 10000)
       cond('VMOT', 'GND.M', 1 / 2000) // regulador + lógica (~5 mA a 12 V)
       if (s.enabled) cond('VMOT', 'GND.M', (0.5 * 0.6) / Math.max(8.2, s.vmot || 12))
     }
@@ -38,7 +41,7 @@ export default {
   },
   step(ctx) {
     const { s, log } = ctx
-    if (s.pos === undefined) Object.assign(s, { pos: 0, stepLv: levelOf(ctx, 'STEP'), dirLv: levelOf(ctx, 'DIR'), lost: 0 })
+    if (s.pos === undefined) Object.assign(s, { pos: 0, stepLv: startLevel(ctx, 'STEP'), dirLv: startLevel(ctx, 'DIR'), lost: 0 })
     const evs = takeEvents(ctx, ['STEP', 'DIR'])
     const inc = 16 / (s.micro || 1)
     let moved = 0
@@ -87,6 +90,7 @@ export default {
     if (vm > 45) issues.push({ level: 'error', msg: i18n.m(`${name}: ${vm.toFixed(1)} V em VMOT (máx. 45 V). Danificado!`, `${name}: ${vm.toFixed(1)} V on VMOT (max 45 V). Damaged!`), parts: [part.id] })
     else if (vm < 8.2) issues.push({ level: 'warn', msg: i18n.m(`${name}: VMOT com ${vm.toFixed(1)} V — o DRV8825 precisa de 8,2–45 V de uma fonte externa (ex.: 12 V), com o − ao GND comum ao Arduino. Abaixo de 8,2 V desliga-se (nem a lógica funciona).`, `${name}: VMOT at ${vm.toFixed(1)} V — the DRV8825 needs 8.2–45 V from an external supply (e.g. 12 V), with − to the GND shared with the Arduino. Below 8.2 V it shuts down (not even the logic works).`), parts: [part.id] })
     if (!isC('STEP') || !isC('DIR')) issues.push({ level: 'info', msg: i18n.m(`${name}: ligue STEP e DIR a dois pinos digitais.`, `${name}: connect STEP and DIR to two digital pins.`), parts: [part.id] })
+    if (!isC('SLP') && !isC('FLT')) issues.push({ level: 'warn', msg: i18n.m(`${name}: SLEEP está solto — no DRV8825 fica a LOW (pull-down interno) e o driver dorme. Ligue SLEEP a 5V (ou ao RESET, com os dois a 5V).`, `${name}: SLEEP is floating — on the DRV8825 it stays LOW (internal pull-down) and the driver sleeps. Connect SLEEP to 5V (or to RESET, with both at 5V).`), parts: [part.id] })
     if (!isC('RST')) issues.push({ level: 'warn', msg: i18n.m(`${name}: RESET está a flutuar — o driver fica desativado. Ligue RESET a SLEEP ou a 5V.`, `${name}: RESET is floating — the driver stays disabled. Connect RESET to SLEEP or to 5V.`), parts: [part.id] })
     const coil = ['1A', '1B', '2A', '2B'].filter((p) => isC(p))
     if (coil.length < 4) issues.push({ level: 'info', msg: i18n.m(`${name}: ligue as bobinas do motor: A1/A2 (bobina A) e B1/B2 (bobina B).`, `${name}: connect the motor coils: A1/A2 (coil A) and B1/B2 (coil B).`), parts: [part.id] })

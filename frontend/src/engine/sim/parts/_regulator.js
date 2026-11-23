@@ -45,18 +45,26 @@ export function regulator({ type, vref, ref, dropout, ilim, iq, name }) {
     },
     update({ s, vd, set }) {
       const vin = vd('IN', ref) // entrada em relação à referência (GND ou ADJ)
+      const vio = vd('IN', 'OUT')
       let m = s.mode || 'off'
-      if (s.hot || vin < Math.max(1.5, dropout)) m = 'off'
+      // sem entrada. No LM317 (sem pino GND) IN − ADJ só serve para arrancar: a regular, o ADJ sobe
+      // com a saída e a falta de entrada vê-se por IN − OUT (reg → drop → off)
+      if (s.hot || (vin < Math.max(1.5, dropout) && (ref === 'GND' || m === 'off'))) m = 'off'
       else if (m === 'off') m = vin - dropout > vref ? 'reg' : 'drop'
       else if (m === 'reg') {
         const i = GM * err(vd)
-        if (vd('IN', 'OUT') < dropout - 0.05) m = 'drop'
+        if (vio < dropout - 0.05) m = 'drop'
         else if (i > ilim * 1.01) m = 'lim'
         else if (i < -0.02) m = 'off' // a saída está a ser puxada para cima por outra fonte
       } else if (m === 'drop') {
-        if (vin - dropout > vref + 0.02) m = 'reg'
-        else if (vd('IN', 'OUT') < dropout - 0.05) m = 'off'
-      } else if (m === 'lim' && GM * err(vd) < ilim) m = 'reg'
+        // volta a regular quando a entrada chega (LM317: quando OUT − ADJ já passaria de vref)
+        if (ref === 'GND' ? vin - dropout > vref + 0.02 : err(vd) < -0.02) m = 'reg'
+        else if (vio < dropout - 0.05) m = 'off'
+        else if ((vio - dropout) / 0.3 > ilim * 1.01) m = 'lim' // o limite de corrente também atua em dropout
+      } else if (m === 'lim') {
+        if (GM * err(vd) < ilim) m = 'reg'
+        else if (vio < dropout - 0.05) m = 'drop'
+      }
       set('mode', m)
       set('powered', m !== 'off')
     },

@@ -1,8 +1,9 @@
 // Adafruit_ADXL345_U: acelerómetro ADXL345 (I2C 0x53 / 0x1D) com eventos Adafruit_Sensor.
-// getEvent() → acceleration.x/y/z em m/s²; getX/Y/Z() → contagens cruas (4 mg/LSB em resolução total).
+// getEvent() → acceleration.x/y/z em m/s²; getX/Y/Z() → contagens cruas (resolução total: 3,9 mg/LSB
+// = 256 LSB/g). Como a biblioteca real multiplica as contagens por 0,004 g, pousado dá ≈ 10,0 m/s².
 import { SensorsEvent } from './Adafruit_Sensor.js'
 import { findI2c, noise } from '../parts/_groupG.js'
-import { adxlAccel } from '../parts/adxl345.js'
+import { adxlAccel, ADXL_LSB_G } from '../parts/adxl345.js'
 import { i2cTime, i2cHint } from './_i2c.js'
 import * as i18n from '../../../../../shared/i18n.js'
 
@@ -77,9 +78,9 @@ export default {
         getDeviceID() {
           return this._p() ? 0xe5 : 0
         }
-        // contagens cruas (resolução total: 4 mg por LSB em qualquer alcance)
+        // contagens cruas (resolução total: 3,9 mg por LSB em qualquer alcance)
         _raw(i) {
-          return Math.round(this._acc()[i] / G / 0.004)
+          return Math.round((this._acc()[i] / G) * ADXL_LSB_G)
         }
         getX() {
           return this._raw(0)
@@ -91,7 +92,7 @@ export default {
           return this._raw(2)
         }
         getEvent(ev) {
-          const [x, y, z] = this._acc().map((v) => Math.round(v / G / 0.004) * 0.004 * G)
+          const [x, y, z] = this._acc().map((v) => Math.round((v / G) * ADXL_LSB_G) * 0.004 * G)
           if (ev && typeof ev === 'object') {
             ev.version = 0
             ev.sensor_id = this.id

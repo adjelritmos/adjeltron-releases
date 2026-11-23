@@ -77,7 +77,11 @@ export default {
   stamp({ s, cond, src, vd }) {
     cond('VCC', 'GND', s.powered ? 0.01 / 5 : 1 / 50000) // ~10 mA (chip + LED)
     cond('OE', 'GND', 1 / 10000) // pull-down na placa: OE solto = saídas ligadas
-    if (!outputsOn(s, vd)) return
+    if (!outputsOn(s, vd)) {
+      // OE a HIGH (com o chip alimentado): as saídas ficam a LOW (OUTNE = 00 por omissão), não no ar
+      if (s.powered && vd('OE', 'GND') >= 1.5) for (let k = 0; k < CH; k++) src(`PWM${k}`, 'GND', 0, 220)
+      return
+    }
     const vcc = vd('VCC', 'GND')
     for (let k = 0; k < CH; k++) {
       const c = channel(s.pcaRegs, k)

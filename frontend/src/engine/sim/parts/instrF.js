@@ -81,27 +81,47 @@ const sigGen = {
 }
 
 const RCV = 0.005
-const RBIG = 1e7
+// CC: em vez de uma fonte de corrente ideal (que, com cargas não lineares — ex.: um MOSFET
+// comandado pela própria fonte — dava milhares de volts nas iterações do solver), a fonte
+// regula a SUA tensão interna vcc entre 0 e a tensão definida para a corrente ser o limite,
+// como o laço de regulação de uma fonte real. A saída nunca passa da tensão definida.
+const setV = (ctx) => Math.max(0, Math.min(30, +val(ctx, 'volts', 12)))
+const setI = (ctx) => Math.max(0.001, Math.min(5, +val(ctx, 'ilim', 1)))
+// tensão interna que dá a corrente I com a carga atual (estimada por v/i)
+function ccTarget(v, i, I, V) {
+  if (!(i > 1e-9)) return V
+  const rl = Math.max(0, v) / i
+  return Math.max(0, Math.min(V, I * (rl + RCV)))
+}
 const benchPsu = {
   type: 'benchPsu',
   stamp(ctx) {
     const { s, src, cond } = ctx
     cond('+', '-', 1e-6)
     if (!+val(ctx, 'out', 1)) return
-    const V = Math.max(0, Math.min(30, +val(ctx, 'volts', 12)))
-    const I = Math.max(0.001, Math.min(5, +val(ctx, 'ilim', 1)))
-    if (s.mode === 'cc') src('+', '-', I * RBIG, RBIG)
-    else src('+', '-', V, RCV, { kind: 'psu' })
+    const V = setV(ctx)
+    src('+', '-', s.mode === 'cc' ? Math.min(V, s.vcc ?? V) : V, RCV, { kind: 'psu' })
   },
   update(ctx) {
     const { s, vd, set } = ctx
     if (!+val(ctx, 'out', 1)) return set('mode', 'off')
-    const V = Math.max(0, Math.min(30, +val(ctx, 'volts', 12)))
-    const I = Math.max(0.001, Math.min(5, +val(ctx, 'ilim', 1)))
-    let m = s.mode === 'cc' ? 'cc' : 'cv'
-    if (m === 'cv' && (V - vd('+', '-')) / RCV > I * 1.002) m = 'cc'
-    else if (m === 'cc' && vd('+', '-') > V + 0.002) m = 'cv'
-    set('mode', m)
+    const V = setV(ctx)
+    const I = setI(ctx)
+    const v = vd('+', '-')
+    const vin = s.mode === 'cc' ? Math.min(V, s.vcc ?? V) : V
+    const i = (vin - v) / RCV
+    if (s.mode !== 'cc') {
+      if (i > I * 1.002) {
+        set('mode', 'cc')
+        set('vcc', Math.round(ccTarget(v, i, I, V) * 1e4) / 1e4)
+        // intervalo da regulação: a 0 V não passa corrente, à tensão definida passa i > I
+        Object.assign(s, { lo: 0, ilo: 0, hi: V, ihi: i, side: 0 })
+      } else set('mode', 'cv')
+      return
+    }
+    // em CC a tensão interna fica fixa durante o passo (o solver vê uma fonte normal);
+    // o ajuste é feito em step(), uma vez por passo de 1 ms
+    set('mode', 'cc')
   },
   step(ctx) {
     const { s, vd, invalidate, log } = ctx
@@ -111,10 +131,37 @@ const benchPsu = {
       s.key = key
       invalidate()
     }
-    const V = +val(ctx, 'volts', 12)
-    const I = +val(ctx, 'ilim', 1)
+    const V = setV(ctx)
+    const I = setI(ctx)
     if (s.mode === 'cv' && (V - vd('+', '-')) / RCV > I * 1.01) invalidate()
-    if (s.mode === 'cc' && vd('+', '-') > V + 0.01) invalidate()
+    // CC: laço de regulação, 1 ajuste por passo de 1 ms. A corrente da carga cresce com a
+    // tensão, por isso procura-se a tensão interna num intervalo [lo, hi] (lo: corrente abaixo
+    // do limite, hi: acima) por regula falsi com bisseção — converge mesmo com cargas muito
+    // não lineares (ex.: MOSFET comandado pela própria fonte) e nunca sai de [0, V].
+    if (s.mode === 'cc') {
+      const v = vd('+', '-')
+      const vin = Math.min(V, s.vcc ?? V)
+      const i = (vin - v) / RCV
+      if (s.lo == null) Object.assign(s, { lo: 0, ilo: 0, hi: V, ihi: Math.max(I * 2, i), side: 0 })
+      // a carga mudou (o intervalo já não contém a solução): reabre-o
+      if (i > I && vin <= s.lo) Object.assign(s, { lo: 0, ilo: 0 })
+      if (i < I && vin >= s.hi) Object.assign(s, { hi: V, ihi: I * 2 })
+      let side = 0
+      if (i > I) (s.hi = vin), (s.ihi = i), (side = 1)
+      else (s.lo = vin), (s.ilo = i), (side = -1)
+      if (i < I && vin >= V - 0.01) {
+        s.mode = 'cv'
+        s.lo = null
+        invalidate()
+      } else if (Math.abs(i - I) > I * 0.003 && s.hi - s.lo > 1e-4) {
+        let c = s.lo + ((I - s.ilo) * (s.hi - s.lo)) / (s.ihi - s.ilo)
+        // o mesmo lado duas vezes seguidas (regula falsi lenta) ou fora do intervalo: bisseção
+        if (!(c > s.lo && c < s.hi) || side === s.side) c = (s.lo + s.hi) / 2
+        s.side = side
+        s.vcc = c
+        invalidate()
+      }
+    }
     if (s.mode === 'cc' && !s.warnedCC) {
       s.warnedCC = true
       log(i18n.m(`ℹ Fonte em limite de corrente (CC): ${I} A a ${vd('+', '-').toFixed(2)} V em vez de ${V} V — a carga pede mais do que o limite (ou há um curto-circuito).`, `ℹ Supply in current limit (CC): ${I} A at ${vd('+', '-').toFixed(2)} V instead of ${V} V — the load draws more than the limit (or there is a short circuit).`), 'info')
@@ -126,7 +173,8 @@ const benchPsu = {
     const v = vd('+', '-')
     const V = +val(ctx, 'volts', 12)
     live.v = Math.round(v * 100) / 100
-    live.i = s.mode === 'cc' ? +val(ctx, 'ilim', 1) : s.mode === 'off' ? 0 : Math.round(Math.max(0, (V - v) / RCV) * 1000) / 1000
+    const vin = s.mode === 'cc' ? Math.min(setV(ctx), s.vcc ?? V) : setV(ctx)
+    live.i = s.mode === 'off' ? 0 : Math.round(Math.max(0, (vin - v) / RCV) * 1000) / 1000
     live.mode = s.mode === 'off' ? 'off' : s.mode === 'cc' ? 'CC' : 'CV'
     live.set = V
     live.ilim = +val(ctx, 'ilim', 1)

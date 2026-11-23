@@ -18,7 +18,7 @@ import * as THREE from 'three'
 import { DEFS, mountsOf, partScale, chosenMaterial, genericMaterial, materialMassFactor } from '@shared/components.js'
 import { MATERIALS } from '@shared/parts/_materials.js'
 import { mountSlide, evalCfg } from '@shared/parts/_mech.js'
-import { physicsModeOf } from '@shared/physics.js'
+import { physicsModeOf, restsOnSurface } from '@shared/physics.js'
 
 const D2R = Math.PI / 180
 
@@ -148,7 +148,15 @@ export function planAssemblies(parts) {
     kids.get(p.parent.id).push(p)
   }
   const W = buildMatrices(parts)
-  const roots = parts.filter((p) => !p.parent || !byId.has(p.parent.id))
+  // peças pousadas numa superfície virada para cima (esfera em cima de uma placa/rampa): corpo
+  // próprio, como no mundo real (rola pela inclinação, cai da borda) em vez de soldada ao pai
+  const rests = (k) => restsOnSurface(k, parts)
+  const depthOf = (p, n = 0) => (p.parent && byId.has(p.parent.id) && n < 64 ? 1 + depthOf(byId.get(p.parent.id), n + 1) : 0)
+  // (as pousadas depois dos pais: o 3D delas é posto no referencial do pai, já atualizado)
+  const roots = [
+    ...parts.filter((p) => !p.parent || !byId.has(p.parent.id)),
+    ...parts.filter((p) => p.parent && byId.has(p.parent.id) && rests(p)).sort((a, b) => depthOf(a) - depthOf(b)),
+  ]
   const out = []
 
   for (const root of roots) {
@@ -167,6 +175,7 @@ export function planAssemblies(parts) {
       if (depth > 64) return
       segments[si].parts.push(p)
       for (const k of kids.get(p.id) || []) {
+        if (rests(k)) continue // corpo próprio (ver roots)
         const mt = mountsOf(p)[k.parent.mount]
         if (mt?.servo || mt?.slide) {
           const key = `${p.id}:${k.parent.mount}`

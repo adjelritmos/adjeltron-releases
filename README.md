@@ -43,7 +43,7 @@ basta ter o [Arduino IDE 2](https://www.arduino.cc/en/software) instalado.
 - 📡 **IoT**: WiFi, HTTP e MQTT no ESP32 e no Pico W
 - 📊 **Ferramentas**: Monitor Série, Plotter, osciloscópio e telemetria dos servos
 
-**339 componentes · 13 placas · 111 exemplos · 120+ bibliotecas Arduino**
+**353 componentes · 13 placas · 119 exemplos · 120+ bibliotecas Arduino**
 
 <img src="img/app-circuito.png" alt="Editor de código e circuito 2D do braço robótico" width="100%" />
 

@@ -48,7 +48,6 @@ function behavior(def) {
     },
     update({ s, vd, set }) {
       if (s.dead) return
-      if (Math.abs(vd('G', 'S')) > m.vgsMax) set('gateBroken', true)
       const n = nextState(s, vd)
       set('vov', n.vov)
       set('mode', n.mode)
@@ -56,6 +55,9 @@ function behavior(def) {
     step(ctx) {
       const { s, cfg, vd, live, log } = ctx
       if (!pch) pwmStep(ctx, 'G', 'D', 'S')
+      // rutura da porta só com a solução final do passo (as iterações intermédias do solver,
+      // ex.: a fonte de bancada a passar a CC, podem dar tensões que nunca existem de facto)
+      if (!s.dead && Math.abs(vd('G', 'S')) > m.vgsMax) s.gateBroken = true
       if (s.gateBroken && !s.dead) {
         s.dead = true
         live.burned = true

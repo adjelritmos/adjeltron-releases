@@ -8,7 +8,7 @@ export default {
   stamp({ cond, src, s, input, vd }) {
     if (s.damaged) return cond('+', '-', 1e-9)
     cond('+', '-', 1 / 5000) // LED de alimentação
-    if (!s.powered) return
+    if (!s.powered) return cond('S', '-', 1e-5) // sem alimentação S descarrega para o GND (~0 V)
     const lv = Math.max(0, Math.min(40, input.value ?? 0))
     s.ao = vd('+', '-') * 0.65 * Math.pow(lv / 40, 0.7)
     src('S', '-', s.ao, lv > 0 ? 2000 : 100000)

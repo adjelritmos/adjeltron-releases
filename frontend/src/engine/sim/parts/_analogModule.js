@@ -14,7 +14,7 @@ import * as i18n from '../../../../../shared/i18n.js'
  *   step(ctx) opcional, extraDiagnose(ctx) opcional, maxPinMa (corrente máx. aceitável a partir de um pino)
  */
 export function analogModule(o) {
-  const { type, threshold = 0.5, load = 1 / 1000, vmin = 3.3, aoFrac, trigger, activeLow, outR = 1000 } = o
+  const { type, threshold = 0.5, load = 1 / 1000, vmin = 3.0, aoFrac, trigger, activeLow, outR = 1000 } = o
   return {
     type,
     stamp(ctx) {
@@ -23,6 +23,10 @@ export function analogModule(o) {
       cond('VCC', 'GND', load)
       if (!s.powered) {
         s.trig = false
+        // sem alimentação as saídas não ficam no ar: AO (pelo divisor do sensor) e DO (pelo pull-up de
+        // 10 kΩ) descarregam para a linha VCC do módulo, que a carga puxa para o GND → leem ~0 V
+        cond('AO', 'VCC', 1e-4)
+        cond('DO', 'VCC', 1e-4)
         return
       }
       const vcc = vd('VCC', 'GND')

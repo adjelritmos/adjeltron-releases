@@ -1,7 +1,8 @@
 // Díodos com parâmetros reais (um ficheiro, várias peças): 1N4148 (sinal, rápido), Schottky
 // 1N5817/1N5819 (queda baixa) e zeners 1N4728A (3,3 V) / 1N4742A (12 V). O 1N4007 é a peça
 // `diode` e o zener de 5,1 V (1N4733A) a peça `zener` (grupo C).
-// `dio` = modelo: vf/r (direto), vz/rz (zener), imax (A), ipk (A, pico), vrrm (V), pmax (W), leak (S).
+// `dio` = modelo: vf/r (direto), vz/rz/izt (zener: a folha de dados dá Vz à corrente de ensaio izt,
+// por isso o joelho do modelo fica em vz − izt·rz), imax (A), ipk (A, pico), vrrm (V), pmax (W), leak (S).
 const pins = [
   { id: 'A', label: 'A (ânodo)', pos: [-0.508, 0, 0], kind: 'pass' },
   { id: 'K', label: 'K (cátodo, risco)', pos: [0.508, 0, 0], kind: 'pass' },
@@ -33,8 +34,8 @@ export const DIODE_DEFS = [
     name: 'Díodo Schottky 1N5819',
     short: '1N5819',
     description:
-      'Schottky de 1 A / 40 V: ~0,35–0,45 V de queda. O mesmo uso do 1N5817 (proteção de polaridade, roda livre, conversores DC-DC) mas aguenta 40 V ao contrário — serve para 12 V/24 V. Fuga inversa de alguns µA. Cátodo K = risco cinzento.',
-    dio: { vf: 0.36, r: 0.12, imax: 1, ipk: 25, vrrm: 40, pmax: 1.2, leak: 1e-6, mark: '1N5819' },
+      'Schottky de 1 A / 40 V: ~0,33 V de queda a 100 mA e ~0,5 V a 1 A. O mesmo uso do 1N5817 (proteção de polaridade, roda livre, conversores DC-DC) mas aguenta 40 V ao contrário — serve para 12 V/24 V. Fuga inversa de alguns µA. Cátodo K = risco cinzento.',
+    dio: { vf: 0.31, r: 0.2, imax: 1, ipk: 25, vrrm: 40, pmax: 1.2, leak: 1e-6, mark: '1N5819' },
   },
   {
     ...base,
@@ -42,8 +43,8 @@ export const DIODE_DEFS = [
     name: 'Díodo Zener 3,3 V (1N4728A)',
     short: 'Zener 3V3',
     description:
-      'Zener de 3,3 V / 1 W: ao contrário (cátodo K, risco, no +) conduz a partir de 3,3 V e prende a tensão nesse valor. Com uma resistência em série faz uma referência de 3,3 V ou protege uma entrada de 3,3 V (ESP32, Pico) de sinais de 5 V. A tensão de um zener baixo "escorrega" bastante com a corrente (resistência dinâmica ~10 Ω). Máx. ~270 mA.',
-    dio: { vf: 0.7, r: 0.5, vz: 3.3, rz: 10, imax: 0.27, ipk: 1.5, pmax: 1, leak: 0, glass: true, zener: true, mark: '1N4728A' },
+      'Zener de 3,3 V / 1 W: ao contrário (cátodo K, risco, no +) prende a tensão em 3,3 V à corrente de ensaio (76 mA). Com uma resistência em série faz uma referência de 3,3 V ou protege uma entrada de 3,3 V (ESP32, Pico) de sinais de 5 V. A tensão de um zener baixo "escorrega" bastante com a corrente (resistência dinâmica ~8–10 Ω): com poucos mA fica só por 2,7–2,9 V. Máx. ~270 mA.',
+    dio: { vf: 0.7, r: 0.5, vz: 3.3, rz: 8, izt: 0.076, imax: 0.27, ipk: 1.5, pmax: 1, leak: 0, glass: true, zener: true, mark: '1N4728A' },
   },
   {
     ...base,
@@ -52,7 +53,7 @@ export const DIODE_DEFS = [
     short: 'Zener 12V',
     description:
       'Zener de 12 V / 1 W: ao contrário (cátodo K no +) prende a tensão em 12 V. Usos: proteger a porta de um MOSFET (entre G e S) quando é comandada com 24 V, limitar a entrada de um regulador, referência. Com uma resistência em série a partir de uma fonte maior. Máx. ~76 mA.',
-    dio: { vf: 0.7, r: 0.5, vz: 12, rz: 9, imax: 0.076, ipk: 0.6, pmax: 1, leak: 0, glass: true, zener: true, mark: '1N4742A' },
+    dio: { vf: 0.7, r: 0.5, vz: 12, rz: 9, izt: 0.021, imax: 0.076, ipk: 0.6, pmax: 1, leak: 0, glass: true, zener: true, mark: '1N4742A' },
   },
 ]
 

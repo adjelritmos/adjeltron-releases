@@ -170,9 +170,9 @@ void setup() {
 }
 
 void loop() {
-  long lado = LADO_CM / RODA_CM * IMP_VOLTA;              // ~646 impulsos
+  long lado = (long)(LADO_CM / RODA_CM * IMP_VOLTA);      // ~646 impulsos
   // rodar 90° no sítio: cada roda faz 1/4 da circunferência de diâmetro = bitola
-  long rodar = (3.1416 * BITOLA_CM / 4) / RODA_CM * IMP_VOLTA;   // ~276 impulsos
+  long rodar = (long)((3.1416 * BITOLA_CM / 4) / RODA_CM * IMP_VOLTA);   // ~276 impulsos
   for (int i = 1; i <= 4; i++) {
     Serial.print("Lado ");
     Serial.println(i);

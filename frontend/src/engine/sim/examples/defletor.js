@@ -104,7 +104,7 @@ void loop() {
   // derivada filtrada (o sensor e o vento têm ruído)
   deriv = 0.7 * deriv + 0.3 * (erro - erroAnt) / dt;
   erroAnt = erro;
-  int pwm = PWM_BASE + Kp * erro + Ki * integral + Kd * deriv;
+  int pwm = (int)(PWM_BASE + Kp * erro + Ki * integral + Kd * deriv);
   motor(pwm);
 
   Serial.print("alvo:");

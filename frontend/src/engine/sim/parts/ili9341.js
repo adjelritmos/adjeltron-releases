@@ -30,6 +30,7 @@ export default {
     if (s.damaged) return cond('VCC', 'GND', 1e-9)
     cond('VCC', 'GND', 0.025 / 5)
     // retroiluminação: 4 LEDs brancos com resistência no módulo (~60 mA a 5 V)
+    cond('LED', 'GND', 1 / 100000) // LED solto fica a 0 V (retroiluminação apagada)
     if (vd('LED', 'GND') > 2.8) cond('LED', 'GND', 0.06 / 5)
   },
   update: (ctx) => {

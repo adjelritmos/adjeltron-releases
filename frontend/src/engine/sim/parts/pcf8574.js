@@ -2,7 +2,7 @@
 // bit a 0 → o pino absorve corrente (0 V por ~25 Ω); bit a 1 → só um pull-up fraco
 // (~100 µA, aqui 33 kΩ para VCC), que serve também de entrada. Ler devolve o nível real
 // dos 8 pinos. INT (dreno aberto) vai a LOW quando uma entrada muda em relação à última
-// leitura/escrita e solta-se ao ler ou escrever.
+// leitura/escrita e solta-se ao ler, ao escrever ou quando as entradas voltam ao valor original.
 import { boardIoOnNet } from './group-c-util.js'
 import { i2cDiag } from './_groupD.js'
 import * as i18n from '../../../../../shared/i18n.js'
@@ -61,6 +61,10 @@ export default {
     if (s.lastIn === undefined) s.lastIn = v
     else if (v !== s.lastIn && !s.int) {
       s.int = true
+      invalidate()
+    } else if (v === s.lastIn && s.int) {
+      // folha de dados: o INT também se solta quando as entradas voltam ao valor original
+      s.int = false
       invalidate()
     }
     // corrente a entrar num pino a LOW (LED sem resistência, curto ao 5V…)

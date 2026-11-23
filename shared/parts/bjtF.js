@@ -63,7 +63,7 @@ export const BJT_DEFS = [
     ],
     config: { heatsink: false },
     fields: [{ key: 'heatsink', label: 'Dissipador', type: 'select', options: [[false, 'sem dissipador (≈ 35 °C/W)'], [true, 'com dissipador (≈ 3 °C/W)']] }],
-    bjt: { pol: 'npn', beta: 40, vbe: 0.75, rb: 2.5, vsat: 0.3, rsat: 0.2, imax: 15, pmax: 115, theta: 35, thetaHs: 3, tau: 60000, tjmax: 200, pkg: 'TO-3', mark: '2N3055' },
+    bjt: { pol: 'npn', beta: 40, vbe: 0.75, rb: 1.0, vsat: 0.3, rsat: 0.2, imax: 15, pmax: 115, theta: 35, thetaHs: 3, tau: 60000, tjmax: 200, pkg: 'TO-3', mark: '2N3055' },
     view2d: { view: 'top', x: [-2.0, 2.0], z: [-1.32, 1.32] },
   },
 ]

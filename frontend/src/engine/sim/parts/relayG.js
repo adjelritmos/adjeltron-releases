@@ -4,12 +4,15 @@
 //    comutadores: P1–NC1/NO1 e P2–NC2/NO2 (~50 mΩ). Sem díodo em paralelo, o pico de
 //    tensão ao desligar é avisado.
 //  - Placas de 2/4/8 relés: cada canal é o relé de 1 canal (relay.js) com optoacoplador:
-//    ativo a LOW por omissão (LED do opto entre VCC e INk com ~1,5 kΩ).
+//    ativo a LOW por omissão (LED do opto entre VCC e INk com ~1,5 kΩ). O LED do optoacoplador
+//    (~1,2 V) está em série com o LED indicador (~1,8 V): só conduz com VCC − IN acima de ~3 V,
+//    por isso um HIGH de 3,3 V (ESP32, Pico) numa placa alimentada a 5 V desliga o relé.
 import { supply, logDamage, diagSupply, boardPinIds } from './_groupA.js'
 import { RELAY_BOARD } from '../../../../../shared/parts/relayModule.js'
 import * as i18n from '../../../../../shared/i18n.js'
 
 const R_C = 0.05
+export const V_OPTO = 3.0 // VCC − IN mínimo para o optoacoplador conduzir (LED do opto + LED indicador)
 
 // há um díodo (1N4007…) diretamente em paralelo com dois pinos da peça?
 export function hasFlyback(nets, part, a, b) {
@@ -98,7 +101,7 @@ function relayBoard(type) {
       const { vd, set, s, cfg } = ctx
       supply(ctx, { vMin: 3.5, vMax: V_MAX })
       const ok = !!s.powered && vd('VCC', 'GND') >= 3.75
-      const coils = K.map((k) => ok && (cfg.trigger === 'high' ? vd(`IN${k}`, 'GND') > 2.0 : vd('VCC', `IN${k}`) > 1.6))
+      const coils = K.map((k) => ok && (cfg.trigger === 'high' ? vd(`IN${k}`, 'GND') > 2.0 : vd('VCC', `IN${k}`) > V_OPTO))
       set('coilKey', coils.map(Number).join(''))
       s.coils = [null, ...coils]
     },

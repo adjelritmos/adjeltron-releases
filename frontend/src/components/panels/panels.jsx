@@ -22,7 +22,6 @@ import {
   ModalContent,
   ModalFooter,
   ModalHeader,
-  NumberInput,
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -49,10 +48,10 @@ import { wirePolyline, polylineToPts, moveCorner, SNAP } from '../../functions/w
 import { PinOrientPick } from './PinOrientPick.jsx'
 import { BreadboardSeat } from './BreadboardSeat.jsx'
 import { PartsField } from './PartsField.jsx'
-import { DEFS, WIRE_COLORS, COLOR_PALETTE, wireColorLabel, pin2dWorld, pinLabel, shortName, LED_COLORS, RESISTOR_VALUES, fmtOhms, mountsOf, batteryVoltage, scalable, mirrorable, baseDims, genericMaterial, chosenMaterial } from '@shared/components.js'
+import { DEFS, WIRE_COLORS, COLOR_PALETTE, wireColorLabel, pin2dWorld, pinLabel, shortName, LED_COLORS, RESISTOR_VALUES, OHM_UNITS, ohmUnitOf, fmtOhms, mountsOf, batteryVoltage, scalable, mirrorable, baseDims, genericMaterial, chosenMaterial } from '@shared/components.js'
 import { MATERIALS, MATERIAL_OPTS } from '@shared/parts/_materials.js'
 import { mountOptions } from '@shared/assembly.js'
-import { PHYSICS_MODES, physicsModeOf, autoPhysics, physicsLabel } from '@shared/physics.js'
+import { PHYSICS_MODES, physicsModeOf, autoPhysics, physicsLabel, physicsRootOf } from '@shared/physics.js'
 
 const AXIS_COLORS = ['#ef5350', '#66bb6a', '#42a5f5'] // X vermelho, Y verde, Z azul (como os eixos do three.js)
 import { setPot, compileCode, setInput, sendSerial, releaseButtons } from '../../services/simControl.js'
@@ -60,6 +59,7 @@ import { simRef } from '../../contexts/simRef.js'
 import { SERVER } from '../../services/platform.js'
 import { FieldsControl, TextControl } from './controlsE.jsx'
 import { useT } from '../../i18n/index.js'
+import { NumField } from '../common/NumField.jsx'
 
 // ---------------- peças de UI partilhadas (todas HeroUI) ----------------
 // paleta de cores clicáveis (LED, botão, fio, cubo…)
@@ -300,17 +300,13 @@ function AxisRow({ label, value, min, max, step, unit, isDisabled, onChange }) {
         isDisabled={isDisabled}
         onChange={(v) => onChange(Array.isArray(v) ? v[0] : v)}
       />
-      <NumberInput
-        size="sm"
-        variant="bordered"
-        aria-label={`${label} (${unit})`}
+      <NumField
+        ariaLabel={`${label} (${unit})`}
         className="w-[5.5rem] shrink-0"
-        hideStepper
         step={step < 1 ? 0.01 : step}
-        formatOptions={{ maximumFractionDigits: 2 }}
         isDisabled={isDisabled}
         value={value}
-        onValueChange={(v) => Number.isFinite(v) && onChange(v)}
+        onChange={onChange}
         endContent={<span className="text-[10px] text-neutral-500">{unit}</span>}
         classNames={AXIS_CLS}
       />
@@ -502,7 +498,8 @@ function Dimensions({ part }) {
   const t = useT()
   const mode = useStore((s) => s.mode)
   const { updateConfig } = useStore.getState()
-  const [lock, setLock] = useState(false)
+  // por omissão a peça cresce por igual em todas as dimensões (engrenagens, polias… inteiras)
+  const [lock, setLock] = useState(true)
   const base = baseDims(part)
   const sc = Array.isArray(part.config?.scale) ? part.config.scale : [1, 1, 1]
   const dis = mode !== 'build'
@@ -525,19 +522,15 @@ function Dimensions({ part }) {
         <>
       <div className="grid grid-cols-3 gap-1">
         {[t('panels.dimLength'), t('panels.dimHeight'), t('panels.dimWidth')].map((label, i) => (
-          <NumberInput
+          <NumField
             key={label}
-            size="sm"
-            variant="bordered"
             label={label}
             labelPlacement="outside"
-            hideStepper
-            step={0.1}
-            minValue={0.05}
+            step={0.01}
+            min={0.01}
             isDisabled={dis || !(base[i] > 0)}
-            formatOptions={{ maximumFractionDigits: 2 }}
             value={Math.round(base[i] * sc[i] * 100) / 100}
-            onValueChange={(v) => setDim(i, v)}
+            onChange={(v) => setDim(i, v)}
             endContent={<span className="text-[10px] text-neutral-500">cm</span>}
             classNames={{ label: 'text-[10px]', input: 'text-xs font-mono', inputWrapper: 'h-8 min-h-8 px-2' }}
           />
@@ -629,18 +622,13 @@ function Placement3D({ part }) {
         <>
           <div className="grid grid-cols-3 gap-1">
             {['x', 'y', 'z'].map((ax, i) => (
-              <NumberInput
+              <NumField
                 key={ax}
-                size="sm"
-                variant="bordered"
-                aria-label={t('panels.position', { axis: ax })}
-                hideStepper
+                ariaLabel={t('panels.position', { axis: ax })}
                 step={0.25}
                 isDisabled={dis}
-                formatOptions={{ maximumFractionDigits: 2 }}
                 value={+part.pos[i].toFixed(2)}
-                onValueChange={(v) => {
-                  if (!Number.isFinite(v)) return
+                onChange={(v) => {
                   const pos = [...part.pos]
                   pos[i] = v
                   move3d(part.id, pos)
@@ -691,21 +679,28 @@ function Placement3D({ part }) {
           </div>
         </>
       )}
-      {!part.parent && (
-        <Select
-          size="sm"
-          variant="bordered"
-          label={t('panels.physics')}
-          isDisabled={dis || DEFS[part.type]?.vehicle}
-          selectedKeys={[part.physics || 'auto']}
-          description={DEFS[part.type]?.vehicle ? t('panels.vehiclePose') : t('panels.physicsNow', { mode: physicsLabel(physicsModeOf(part, parts)) })}
-          onChange={(e) => e.target.value && update3d(part.id, { physics: e.target.value === 'auto' ? undefined : e.target.value })}
-        >
-          {PHYSICS_MODES.map(([k, label]) => (
-            <SelectItem key={k}>{k === 'auto' ? `${label} (${physicsLabel(autoPhysics(part, parts))})` : label}</SelectItem>
-          ))}
-        </Select>
-      )}
+      {(() => {
+        // física da montagem: numa peça presa, o modo é o da peça-base (raiz) — mostra-se e
+        // muda-se daqui também; uma peça pousada (esfera em cima de uma placa) tem o seu
+        const root = physicsRootOf(part, parts)
+        if (!root) return null
+        const veh = DEFS[root.type]?.vehicle
+        return (
+          <Select
+            size="sm"
+            variant="bordered"
+            label={root.id === part.id ? t('panels.physics') : t('panels.physicsOf', { name: shortName(root, parts) })}
+            isDisabled={dis || veh}
+            selectedKeys={[root.physics || 'auto']}
+            description={veh ? t('panels.vehiclePose') : t('panels.physicsNow', { mode: physicsLabel(physicsModeOf(root, parts)) })}
+            onChange={(e) => e.target.value && update3d(root.id, { physics: e.target.value === 'auto' ? undefined : e.target.value })}
+          >
+            {PHYSICS_MODES.map(([k, label]) => (
+              <SelectItem key={k}>{k === 'auto' ? `${label} (${physicsLabel(autoPhysics(root, parts))})` : label}</SelectItem>
+            ))}
+          </Select>
+        )
+      })()}
       {DEFS[part.type]?.vehicle && !part.parent && (
         <Button size="sm" variant="flat" isDisabled={dis} onPress={placeOnTrackStart}>
           {t('panels.trackStart')}
@@ -752,7 +747,12 @@ function Config({ part }) {
         </div>
       )
     case 'battery':
-      return <SliderField label={t('panels.charge')} min={0} max={100} isDisabled={dis} value={cfg.charge} format={(v) => `${v}% → ${batteryVoltage(v).toFixed(2)} V`} onChange={(v) => updateConfig(part.id, { charge: v })} />
+      return (
+        <div className="flex flex-col gap-2">
+          <SliderField label={t('panels.charge')} min={0} max={100} isDisabled={dis} value={cfg.charge} format={(v) => `${v}% → ${batteryVoltage(v).toFixed(2)} V`} onChange={(v) => updateConfig(part.id, { charge: v })} />
+          <ColorField label={t('panels.cellColor')} value={cfg.color || '#1556b0'} isDisabled={dis} onChange={(v) => updateConfig(part.id, { color: v })} />
+        </div>
+      )
     case 'led':
       return (
         <Field label={t('panels.color')}>
@@ -761,14 +761,14 @@ function Config({ part }) {
       )
     case 'resistor':
       return (
-        <Select size="sm" variant="bordered" label={t('panels.value')} isDisabled={dis} selectedKeys={[String(cfg.ohms)]} onChange={(e) => e.target.value && updateConfig(part.id, { ohms: +e.target.value })}>
-          {RESISTOR_VALUES.map((v) => (
-            <SelectItem key={String(v)}>{fmtOhms(v)}</SelectItem>
-          ))}
-        </Select>
+        <ResistorField key={part.id} isDisabled={dis} ohms={cfg.ohms ?? 220} onChange={(ohms) => updateConfig(part.id, { ohms })} />
       )
     case 'pot':
       return (
+        <div className="flex flex-col gap-2">
+        <Switch size="sm" isDisabled={dis} isSelected={cfg.knob !== false} onValueChange={(v) => updateConfig(part.id, { knob: v })}>
+          <span className="text-xs">{t('panels.potKnob')}</span>
+        </Switch>
         <SliderField
           label={t('panels.wiper')}
           min={0}
@@ -778,6 +778,7 @@ function Config({ part }) {
           format={(v) => `${Math.round(v * 100)}%`}
           onChange={(v) => (mode === 'sim' ? setPot(part.id, v) : updateConfig(part.id, { value: v }))}
         />
+        </div>
       )
     case 'button':
       return (
@@ -797,6 +798,57 @@ function Config({ part }) {
       return <PluginFields part={part} />
   }
 }
+
+// resistência: valores comuns (lista) ou um valor qualquer com unidade (Ω, kΩ, MΩ)
+function ResistorField({ ohms, onChange, isDisabled }) {
+  const t = useT()
+  const [unit, setUnit] = useState(() => ohmUnitOf(ohms))
+  const preset = RESISTOR_VALUES.includes(ohms)
+  return (
+    <div className="flex flex-col gap-2">
+      <Select size="sm" variant="bordered" label={t('panels.value')} isDisabled={isDisabled} selectedKeys={[preset ? String(ohms) : 'custom']} onChange={(e) => {
+        const v = e.target.value
+        if (!v || v === 'custom') return
+        setUnit(ohmUnitOf(+v))
+        onChange(+v)
+      }}>
+        {[
+          ...RESISTOR_VALUES.map((v) => <SelectItem key={String(v)}>{fmtOhms(v)}</SelectItem>),
+          <SelectItem key="custom">{preset ? t('panels.customValue') : `${fmtOhms(ohms)} (${t('panels.customValue').toLowerCase()})`}</SelectItem>,
+        ]}
+      </Select>
+      <div className="flex gap-1.5">
+        <NumField
+          className="flex-1"
+          label={t('panels.customValue')}
+          isDisabled={isDisabled}
+          step={0.1}
+          min={0.1 / unit}
+          max={1e8 / unit}
+          value={Number((ohms / unit).toPrecision(6))}
+          onChange={(v) => onChange(Number((v * unit).toPrecision(6)))}
+        />
+        <Select size="sm" variant="bordered" label={t('panels.unit')} className="w-24 shrink-0" isDisabled={isDisabled} selectedKeys={[String(unit)]} onChange={(e) => {
+          const u = +e.target.value
+          if (!u) return
+          setUnit(u)
+          // o número escrito mantém-se e passa a valer na nova unidade (4,7 Ω → 4,7 kΩ)
+          onChange(Math.min(1e8, Math.max(0.1, Number(((ohms / unit) * u).toPrecision(6)))))
+        }}>
+          {OHM_UNITS.map(([m, l]) => (
+            <SelectItem key={String(m)}>{l}</SelectItem>
+          ))}
+        </Select>
+      </div>
+    </div>
+  )
+}
+
+// dimensões (cm, mm): passo de 0,01 em todas as peças; o resto, o passo do catálogo
+const isDim = (f) => f.unit === 'cm' || f.unit === 'mm'
+const dimStep = (f) => (isDim(f) ? 0.01 : f.step ?? 1)
+// mínimo de 0,01 em todas as dimensões
+const dimMin = (f) => (isDim(f) ? 0.01 : f.min)
 
 // propriedades declaradas no catálogo (shared/parts: `fields`) + uso da biblioteca
 function PluginFields({ part }) {
@@ -823,22 +875,10 @@ function PluginFields({ part }) {
         if (f.type === 'color') return <ColorField key={f.key} label={f.label} value={v} isDisabled={dis} onChange={set} />
         if (f.type === 'parts') return <PartsField key={f.key} part={part} f={f} value={v} isDisabled={dis} onChange={set} />
         if (f.type === 'range')
-          return <SliderField key={f.key} label={f.label} min={f.min} max={f.max} step={f.step ?? 1} isDisabled={dis} value={v} format={(x) => `${x}${f.unit ? ` ${f.unit}` : ''}`} onChange={set} />
+          return <SliderField key={f.key} label={f.label} min={dimMin(f)} max={f.max} step={dimStep(f)} isDisabled={dis} value={v} format={(x) => `${dimStep(f) === 0.01 ? Number(Number(x).toFixed(2)) : x}${f.unit ? ` ${f.unit}` : ''}`} onChange={(x) => set(dimStep(f) === 0.01 ? Number(Number(x).toFixed(2)) : x)} />
         if (f.type === 'number')
           return (
-            <NumberInput
-              key={f.key}
-              size="sm"
-              variant="bordered"
-              label={f.label}
-              isDisabled={dis}
-              minValue={f.min}
-              maxValue={f.max}
-              step={f.step}
-              value={v ?? 0}
-              onValueChange={(x) => Number.isFinite(x) && set(x)}
-              endContent={f.unit ? <span className="text-xs text-neutral-500">{f.unit}</span> : null}
-            />
+            <NumField key={f.key} label={f.label} isDisabled={dis} min={dimMin(f)} max={f.max} step={dimStep(f)} unit={f.unit} value={v ?? 0} onChange={set} />
           )
         return <Input key={f.key} size="sm" variant="bordered" label={f.label} isDisabled={dis} value={v ?? ''} onValueChange={set} />
       })}

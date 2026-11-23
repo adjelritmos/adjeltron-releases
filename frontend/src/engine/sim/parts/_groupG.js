@@ -11,7 +11,7 @@ export function soundModule(type, gain) {
     type,
     threshold: 0.52,
     load: 1 / 1250,
-    vmin: 3.3,
+    vmin: 3.0, // funciona no pino 3V3 (que com carga fica um pouco abaixo de 3,3 V)
     aoFrac: ({ s, vd }) => 0.5 + (s.wave ?? 0) / Math.max(1, vd('VCC', 'GND')),
     trigger: 'above',
     activeLow: false,

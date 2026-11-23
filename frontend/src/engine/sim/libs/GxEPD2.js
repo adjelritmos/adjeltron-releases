@@ -97,12 +97,15 @@ function makeClass(env, clsKind, clsName) {
       else if (pk !== pn.kind && p.type === pn.type) env.warnOnce('epdkind', i18n.m(`${this._label()}: o programa trata o painel como ${KIND_NAME[pn.kind]}, mas o módulo ligado é ${KIND_NAME[pk]}.${pk === '3c' ? ' O vermelho nunca aparece e a atualização não funciona bem (controlador diferente).' : ' As cores extra ficam a branco.'}`, `${this._label()}: the program treats the panel as ${KIND_NAME[pn.kind]}, but the connected module is ${KIND_NAME[pk]}.${pk === '3c' ? ' Red never shows and refreshing does not work properly (different controller).' : ' The extra colors stay white.'}`))
       if (!env.powered(p.id)) env.warnOnce('epdpwr', i18n.m(`${this._label()} sem alimentação: VCC → 3,3 V ou 5V e GND → GND.`, `${this._label()} has no power: VCC → 3.3 V or 5V and GND → GND.`))
     }
-    // cor RGB565 → índice da paleta (com tramas para os cinzentos num painel P/B)
+    // cor RGB565 → índice da paleta
     _q(c, nx, ny) {
       c &= 0xffff
       if (c === 0xffff) return 0
       if (c === 0) return 1
       if (clsKind === '7c') return nearest7(c)
+      // GxEPD2_BW: `if (color) branco; else preto` — só GxEPD_BLACK (0) é preto; vermelho, cinzentos
+      // e qualquer outra cor saem a branco (não há tramas)
+      if (clsKind === 'bw') return 0
       const [r, g, b] = rgb565(c)
       if (clsKind === '3c' && r > 150 && b < 110 && g < 200) return 2
       const lum = 0.3 * r + 0.59 * g + 0.11 * b

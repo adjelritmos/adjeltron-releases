@@ -169,5 +169,35 @@ export function moveOnBreadboard(parts, id, pos, { final = true } = {}) {
   const lifted = y > seatY + 0.1 || !pluggablePart(p)
   const np = { ...p, sch: { ...p.sch, x: p.sch.x + sx, y: p.sch.y + sy }, pos: [r4(p.pos[0] + nx * PITCH), r4(y), r4(p.pos[2] + nz * PITCH)], unplugged: lifted ? true : undefined }
   const next = parts.map((q) => (q.id === id ? np : q))
-  return final ? syncBreadboards(next) : next
+  return final ? keepOnBreadboard(next, id, parts) : next
+}
+
+/**
+ * Acerta uma peça da breadboard depois de mexida (arrasto 3D largado ou posição escrita no painel).
+ * Se o sítio pedido não tem furos onde a peça caiba (calha central, borda, furos de um trilho),
+ * NÃO a atira para a mesa: fica nos furos válidos mais próximos — e, se não houver nenhum por
+ * perto, volta ao sítio onde estava (`fallback`). Só sai da breadboard quando é largada mesmo
+ * fora dela (mais de `margin` cm para lá da borda; só com allowLeave, no arrasto).
+ */
+export function keepOnBreadboard(parts, id, fallback = parts, { allowLeave = false, margin = 1.2, max = 7 } = {}) {
+  const p = parts.find((q) => q.id === id)
+  const bb = onBb(parts, p)
+  const synced = syncBreadboards(parts)
+  const seated = (list) => !!list.find((q) => q.id === id)?.parent
+  if (!bb || seated(synced)) return synced
+  if (allowLeave) {
+    const [sx, , sz] = DEFS[bb.type].size
+    if (Math.abs(p.pos[0]) > sx / 2 + margin || Math.abs(p.pos[2]) > sz / 2 + margin) return synced // largada fora: vai para a mesa
+  }
+  // furos válidos mais próximos, por distância crescente
+  const offs = []
+  for (let dx = -max; dx <= max; dx++) for (let dz = -max; dz <= max; dz++) if (dx || dz) offs.push([dx, dz])
+  offs.sort((a, b) => a[0] * a[0] + a[1] * a[1] - (b[0] * b[0] + b[1] * b[1]))
+  const r4 = (v) => Math.round(v * 1e4) / 1e4
+  for (const [dx, dz] of offs) {
+    const [ox, oy] = rot2d([dx * PITCH * S2D, dz * PITCH * S2D], bb.sch.rot || 0)
+    const trial = syncBreadboards(parts.map((q) => (q.id === id ? { ...q, sch: { ...q.sch, x: q.sch.x + ox, y: q.sch.y + oy }, pos: [r4(q.pos[0] + dx * PITCH), q.pos[1], r4(q.pos[2] + dz * PITCH)] } : q)))
+    if (seated(trial)) return trial
+  }
+  return syncBreadboards(fallback)
 }

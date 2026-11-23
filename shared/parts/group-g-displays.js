@@ -5,5 +5,6 @@ import sh1106 from './sh1106.js'
 import ssd1306spi from './ssd1306spi.js'
 import tft77 from './tft77.js'
 import pcd8544 from './pcd8544.js'
+import gc9a01 from './gc9a01.js'
 
-export const G_DISPLAYS = [...epaper, sh1106, ssd1306spi, ...tft77, pcd8544]
+export const G_DISPLAYS = [...epaper, sh1106, ssd1306spi, ...tft77, pcd8544, gc9a01]

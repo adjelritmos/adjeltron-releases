@@ -15,6 +15,7 @@ export default {
     if (s.damaged) return
     cond('VCC', 'GND', 1 / 50000) // ~65 µA em repouso
     if (s.powered) src('OUT', 'GND', s.out ? 3.3 : 0, 150)
+    else cond('OUT', 'GND', 1e-5) // sem alimentação (ou abaixo de 4,5 V) OUT fica a ~0 V
   },
   update: (ctx) => modulePower(ctx, 4.5, 20, 24),
   step({ s, cfg, input, timeUs, invalidate }) {

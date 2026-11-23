@@ -5,6 +5,7 @@ import * as THREE from 'three'
 import { useStore } from '../../contexts/store.js'
 import { DEFS, mountsOf, partScale, partSize, pinPos3d, pins3d, vehicleLift, chosenMaterial, genericMaterial } from '@shared/components.js'
 import { BOARD_BUTTONS, boardButtonAt, boardButtonInput } from '@shared/boardButtons.js'
+import { controlUnder, startControl, wheelControl } from '../../functions/partControls.js'
 import { applyMaterial } from '../../functions/materialSwap.js'
 import { servoHornRotation, rootOf } from '@shared/assembly.js'
 import { ARENA } from '@shared/tracks.js'
@@ -281,6 +282,18 @@ function PartNode({ part, all }) {
           if (st.mode === 'sim') {
             // peças interativas: como no circuito 2D (botões, interruptores, teclados…)
             const ia = DEFS[part.type].interactive
+            // manípulos e teclas da peça (fonte, gerador, potenciómetros…): functions/partControls.js
+            const cobj = objects.get(part.id)
+            if (cobj) {
+              cobj.updateWorldMatrix(true, false)
+              const l = e.point.clone().applyMatrix4(cobj.matrixWorld.clone().invert())
+              const c = controlUnder(part, l.x, l.z)
+              if (c) {
+                e.stopPropagation()
+                startControl(part, c, e.nativeEvent)
+                return
+              }
+            }
             // botões da placa (RESET/EN, BOOT, BOOTSEL): no ponto clicado, no referencial da peça
             const bobj = BOARD_BUTTONS[part.type] && objects.get(part.id)
             if (bobj) {
@@ -367,10 +380,10 @@ function PartNode({ part, all }) {
         </group>
       </group>
       {selected && mode === 'build' && (
-        <mesh position={[part.type === 'armLink' ? (part.config.length ?? 10) / 2 : 0, (def.size[1] * (partSize(part)?.[1] ?? 1)) / 2, 0]}>
-          <boxGeometry args={[(part.type === 'armLink' ? (part.config.length ?? 10) + 1.6 : def.size[0] * (partSize(part)?.[0] ?? 1)) + 0.4, def.size[1] * (partSize(part)?.[1] ?? 1) + 0.4, def.size[2] * (partSize(part)?.[2] ?? 1) + 0.4]} />
-          <meshBasicMaterial color="#ffffff" wireframe transparent opacity={0.5} />
-        </mesh>
+        <SelBox
+          pos={[part.type === 'armLink' ? (part.config.length ?? 10) / 2 : 0, (def.size[1] * (partSize(part)?.[1] ?? 1)) / 2, 0]}
+          size={[(part.type === 'armLink' ? (part.config.length ?? 10) + 1.6 : def.size[0] * (partSize(part)?.[0] ?? 1)) + 0.4, def.size[1] * (partSize(part)?.[1] ?? 1) + 0.4, def.size[2] * (partSize(part)?.[2] ?? 1) + 0.4]}
+        />
       )}
       {showPins && !def.breadboard && pins3d(part).map((pin) => <Pin key={pin.id} part={part} pin={pin} />)}
       {Object.entries(mounts).map(([mid, m]) => (
@@ -429,6 +442,19 @@ function World() {
       const hit = simRef.pick3D(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1)
       const part = hit?.partId && st.parts.find((q) => q.id === hit.partId)
       const ia = part && DEFS[part.type].interactive
+      // manípulo debaixo do cursor (fonte, gerador, potenciómetros): regula-o
+      const cobj = part && objects.get(part.id)
+      if (cobj) {
+        cobj.updateWorldMatrix(true, false)
+        const l = hit.point.clone().applyMatrix4(cobj.matrixWorld.clone().invert())
+        const c = controlUnder(part, l.x, l.z)
+        if (c?.kind === 'knob') {
+          ev.preventDefault()
+          ev.stopImmediatePropagation()
+          wheelControl(part, c, ev)
+          return
+        }
+      }
       if (!ia?.wheel) return
       ev.preventDefault()
       ev.stopImmediatePropagation()
@@ -521,6 +547,19 @@ function World() {
         ))}
       <Wires3D container={null} />
     </group>
+  )
+}
+
+// contorno da peça selecionada: só as 12 arestas da caixa (a malha em triângulos tinha
+// diagonais que pareciam fios a atravessar as peças)
+function SelBox({ pos, size }) {
+  const key = size.map((v) => v.toFixed(3)).join(',')
+  const geom = useMemo(() => new THREE.EdgesGeometry(new THREE.BoxGeometry(...size)), [key]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => geom.dispose(), [geom])
+  return (
+    <lineSegments position={pos} geometry={geom} raycast={() => null}>
+      <lineBasicMaterial color="#ffffff" transparent opacity={0.6} />
+    </lineSegments>
   )
 }
 
@@ -643,18 +682,21 @@ export function Scene3D() {
       <fog attach="fog" args={['#111111', 400, 900]} />
       <StudioEnvironment />
       <hemisphereLight args={['#dfe9ff', '#3a3226', 0.3]} />
+      {/* luz principal ligeiramente quente (como a softbox do estúdio) e sombra de 4K: com 2K cada
+          texel media ~1,5 mm e as sombras das peças pequenas saíam em escada */}
       <directionalLight
         position={[60, 120, 40]}
         intensity={2.8}
+        color="#fff4e6"
         castShadow
-        shadow-mapSize={[2048, 2048]}
+        shadow-mapSize={[4096, 4096]}
         shadow-camera-left={-150}
         shadow-camera-right={150}
         shadow-camera-top={120}
         shadow-camera-bottom={-120}
         shadow-camera-far={400}
-        shadow-bias={-0.0005}
-        shadow-normalBias={0.02}
+        shadow-bias={-0.0004}
+        shadow-normalBias={0.04}
       />
       {/* luz de recorte: separa as silhuetas do fundo escuro */}
       <directionalLight position={[-70, 50, -60]} intensity={0.45} color="#cfe0ff" />

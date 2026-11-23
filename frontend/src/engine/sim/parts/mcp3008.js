@@ -6,6 +6,9 @@ import { modulePower, powerDiagnose } from './_util.js'
 import * as i18n from '../../../../../shared/i18n.js'
 
 // canais do modo diferencial (D2 D1 D0 → IN+, IN−)
+// pinos do SPI por hardware de cada placa (os mesmos de libs/Adafruit_ILI9341.js)
+const HW_SPI = { uno: { mosi: 11, sck: 13, miso: 12 }, mega: { mosi: 51, sck: 52, miso: 50 }, esp32: { mosi: 23, sck: 18, miso: 19 }, pico: { mosi: 19, sck: 18, miso: 16 } }
+
 const DIFF = [[0, 1], [1, 0], [2, 3], [3, 2], [4, 5], [5, 4], [6, 7], [7, 6]]
 
 function convert(ctx, sgl, ch) {
@@ -25,6 +28,11 @@ export default {
       s.st = { started: false, i: 0, cfg: 0, val: 0 }
     },
     transfer(ctx, b) {
+      // só conta os bits se o relógio e os dados chegarem mesmo ao chip: CLK no SCK e DIN no MOSI
+      // do barramento (SPI por hardware da placa, ou os pinos dados à biblioteca em begin())
+      const pins = ctx.s.spiPins || HW_SPI[ctx.env.board?.id] || HW_SPI.uno
+      const on = (pin, n) => ctx.env.pinsOf(ctx.part.id, pin).includes(n)
+      if (!on('CLK', pins.sck) || !on('DIN', pins.mosi)) return null
       const st = (ctx.s.st ||= { started: false, i: 0, cfg: 0, val: 0 })
       let out = 0
       for (let k = 7; k >= 0; k--) {
@@ -42,7 +50,8 @@ export default {
         }
         out = (out << 1) | o
       }
-      return out
+      // sem o DOUT ligado ao MISO a placa não vê a resposta (lê 0xFF)
+      return on('DOUT', pins.miso) ? out : null
     },
   },
   stamp({ cond, s }) {

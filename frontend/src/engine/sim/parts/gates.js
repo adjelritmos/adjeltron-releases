@@ -78,6 +78,8 @@ function behavior(def) {
             if (h && !prev) edges++
             prev = h
           }
+        } else if (s.clk === undefined) {
+          // primeiro instante: um CLK que já nasce a HIGH (ex.: ligado ao /Q de outro flip-flop) não é um flanco
         } else if (lv.CLK && !s.clk) edges = 1
         s.clk = lv.CLK
         for (let k = 0; k < edges; k++) {

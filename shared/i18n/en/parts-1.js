@@ -79,7 +79,7 @@ const FLAT = {
   'arCondicionado|fields|alvo|label': 'Set temperature',
   'arCondicionado|fields|sala|label': 'Initial room temperature',
   'arCondicionado|fields|cor|label': 'Color',
-  'arduino|description': 'ATmega328P at 16 MHz. PWM: 3, 5, 6, 9, 10, 11. Analog: A0–A5.',
+  'arduino|description': 'ATmega328P at 16 MHz. PWM: 3, 5, 6, 9, 10, 11. Analog: A0–A5. I2C: A4 (SDA) and A5 (SCL), also on the SDA and SCL pins next to AREF.',
   'armBase|name': 'Arm base',
   'armBase|description': 'Heavy platform to hold the base servo of a robotic arm.',
   'armBase|mounts|top|label': 'on top',
@@ -127,7 +127,7 @@ const FLAT = {
   'bateriaLipo2s|pins|-|label': '− (T plug, black)',
   'bateriaLipo2s|fields|charge|label': 'Charge',
   'battery|name': '2×18650 battery',
-  'battery|description': '7.4 V nominal (8.4 V full). Internal resistance ~0.15 Ω.',
+  'battery|description': '7.4 V nominal (8.4 V full). Internal resistance ~0.15 Ω. Pick the color of the cell sleeves in the properties.',
   'battery9v|name': '9 V battery',
   'battery9v|short': '9V battery',
   'battery9v|description': '9 V alkaline battery with a snap clip (red wire +, black −). High internal resistance (~1.5 Ω): fine for the Arduino (+ → VIN, − → GND) or a small motor, but the voltage drops a lot with currents above ~0.5 A. Remember the common GND with the Arduino.',
@@ -486,6 +486,7 @@ const FLAT = {
   'cr2032|description': '3 V lithium cell (20 mm × 3.2 mm, ~225 mAh) in a holder that fits the breadboard. It has a HIGH internal resistance (~20–30 Ω, rising as it drains): it handles 0.2–3 mA continuously (RTC clocks, sleeping sensors) and about 15 mA in pulses. That’s why it can light an LED without a resistor (the cell itself limits the current to ~20 mA) but the voltage plunges with bigger loads — it can’t power the Arduino, servos or motors. + is the wide top face.',
   'cr2032|pins|+|label': '+ (top face)',
   'cr2032|fields|charge|label': 'Charge',
+  'cr2032|fields|color|label': 'Holder color',
   'cube|name': 'Cube (object)',
   'cube|description': '2.5 cm object for the gripper to pick up and drop.',
   'd1n4148|pins|A|label': 'A (anode)',
@@ -708,7 +709,10 @@ const FLAT = {
   'esc|pins|C|label': 'C (motor phase)',
   'esfera|name': 'Sphere (any material)',
   'esfera|short': 'Sphere',
-  'esfera|description': 'Solid ball with the radius and material you want. Loose, it rolls and collides with physics; attached, it serves as a round foot, a head or a weight. Origin at the bottom point.',
+  'esfera|description': 'Solid ball with the radius and material you want. Loose (or resting on top of a plate, block, ramp…) it rolls down the slope, falls and collides with physics; glued (Attachment), it serves as a round foot, a head or a weight. Origin at the bottom point.',
+  'esfera|fields|fixa|label': 'Attachment',
+  'esfera|fields|fixa|options|false': 'Resting (rolls and falls like the real thing)',
+  'esfera|fields|fixa|options|true': 'Glued / attached to the part',
   'esfera|fields|r|label': 'Radius',
   'esfera|fields|color|label': 'Color',
   'esfera|mounts|top|label': 'on top',
@@ -866,6 +870,29 @@ const FLAT = {
   'gateNand2|pins|B|label': 'B (input)',
   'gateNand2|pins|Y|label': 'Y (output)',
 }
+
+// MOSFET TO-220 extra (shared/parts/fetF.js): nome, descrição, pinos G/D/S e dissipador
+const P_USE_EN =
+  'P-channel = HIGH-side switch: S → supply +, D → load → GND. It turns on when the gate goes below the source (negative Vgs, ~−10 V for minimum Rds) and turns off with G at the level of S. Put a 10 kΩ resistor between G and S (off by default) and an NPN/2N7000 pulling G to GND to turn it on. If S is at 5 V, an Arduino pin can drive G directly (LOW = on); at 12 V it can NOT — the pin never reaches 12 V and the MOSFET never turns off.'
+const FETS_EN = {
+  irf3205: ['IRF3205 N-MOSFET (power)', 'N-channel power MOSFET widely used in motor controllers, inverters and ESCs (55 V, 110 A, 8 mΩ at Vgs = 10 V). It is NOT logic-level (Vth 2–4 V): with the 5 V of an Arduino pin it is only partly on and heats up at high currents — drive the gate with 10–12 V (gate driver or NPN + pull-up) or use the IRLB8721 / IRLZ44N. Low side: S → GND, load between + and D, diode across inductive loads. Front view: G, D, S.'],
+  irfz44n: ['IRFZ44N N-MOSFET (power)', 'N-channel power MOSFET (55 V, 49 A, 17.5 mΩ at Vgs = 10 V). The "cousin" of the IRLZ44N but NOT logic-level (Vth 2–4 V): with 5 V on the gate it conducts poorly and heats up. Drive the gate with 10–12 V or use the IRLZ44N. Low side: S → GND, load between + and D. Front view: G, D, S.'],
+  irf520n: ['IRF520N N-MOSFET', 'N-channel MOSFET (100 V, 9.7 A, 0.2 Ω at Vgs = 10 V), the one on "IRF520 MOSFET driver" modules. It is NOT logic-level (Vth 2–4 V): with 5 V on the gate it only passes a few hundred mA — fine for LEDs and small motors; for high currents drive the gate with 10 V or use a logic-level MOSFET. Low side: S → GND, load between + and D. Front view: G, D, S.'],
+  irl540n: ['IRL540N N-MOSFET (logic-level)', 'LOGIC-LEVEL N-channel power MOSFET (100 V, 36 A; 53 mΩ at Vgs = 5 V, Vth 1–2 V): turns on well straight from a 5 V Arduino pin. Good for 24–48 V loads. Gate: max ±16 V. Low side: S → GND, load between + and D, G to the pin with 100–220 Ω in series and 10–100 kΩ from G to S. Front view: G, D, S.'],
+  irlb8721: ['IRLB8721 N-MOSFET (logic-level)', 'LOGIC-LEVEL N-channel MOSFET (30 V, 62 A; 16 mΩ at Vgs = 4.5 V, 8.7 mΩ at 10 V; Vth 1.35–2.35 V): fully on with 5 V and even with 3.3 V (ESP32/Pico) at moderate currents. Great for 12 V LED strips and motors. Max 30 V between D and S. Low side: S → GND, load between + and D. Front view: G, D, S.'],
+  irf4905: ['IRF4905 P-MOSFET (power)', `P-channel power MOSFET (−55 V, −74 A, 20 mΩ at Vgs = −10 V; Vth −2 to −4 V) — the "P-channel IRF3205", for high-side switches with high currents. ${P_USE_EN} Front view: G, D, S.`],
+}
+for (const [type, [name, description]] of Object.entries(FETS_EN))
+  Object.assign(FLAT, {
+    [`${type}|name`]: name,
+    [`${type}|description`]: description,
+    [`${type}|pins|G|label`]: 'G (gate) · pin 1',
+    [`${type}|pins|D|label`]: 'D (drain) · pin 2',
+    [`${type}|pins|S|label`]: 'S (source) · pin 3',
+    [`${type}|fields|heatsink|label`]: 'Heatsink',
+    [`${type}|fields|heatsink|options|false`]: 'no heatsink (≈ 62 °C/W)',
+    [`${type}|fields|heatsink|options|true`]: 'with heatsink (≈ 4 °C/W)',
+  })
 
 // "tipo|fields|freq|label" → { tipo: { fields: { freq: { label } } } }
 const patch = {}

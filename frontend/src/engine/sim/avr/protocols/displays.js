@@ -209,6 +209,8 @@ const TFT = {
   ili9341: { W: 240, H: 320, ramW: 240, ramH: 320, base: 0x40, xo: 0, yo: 0 },
   st7789: { W: 240, H: 240, ramW: 240, ramH: 320, base: 0xc0, xo: 0, yo: 80 },
   st7735: { W: 128, H: 160, ramW: 128, ramH: 160, base: 0xc0, xo: 0, yo: 0 },
+  // ecrã redondo GC9A01: memória 240×240, rotação 0 da Adafruit_GC9A01A = MX (+BGR)
+  gc9a01: { W: 240, H: 240, ramW: 240, ramH: 240, base: 0x40, xo: 0, yo: 0 },
 }
 export function tftSpi(ctx) {
   const g = TFT[ctx.part.type] || TFT.ili9341

@@ -1,11 +1,11 @@
 // MOSFET N de nível lógico IRLZ44N. Modelo quadrático: abaixo de Vth desligado;
-// zona óhmica com R = 1/(K·(Vgs − Vth)) (0,025 Ω a 5 V) e saturação com
+// zona óhmica com R = 1/(K·(Vgs − Vth)) + 2 mΩ (0,025 Ω a 5 V e 0,035 Ω a 4 V, os máximos da folha de dados) e saturação com
 // Id = K/2·(Vgs − Vth)². A porta é isolada (não gasta corrente). Díodo interno S→D.
 import { pwmStep, pwmDuty, boardIoOnNet, flybackHint } from './group-c-util.js'
 import * as i18n from '../../../../../shared/i18n.js'
 
 const VTH = 1.7
-const K = 12.1 // A/V²
+const K = 13.2 // A/V²
 const RO = 1e4
 const ron = (vov) => 1 / (K * vov) + 0.002
 const idsat = (vov) => (K / 2) * vov * vov

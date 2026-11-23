@@ -271,6 +271,8 @@ export function createCircuit(parts, wires, ext = {}) {
         case 'buck': {
           cond(idx(id, 'IN+'), idx(id, 'IN-'), 1 / 2000)
           if (s.reg) src(idx(id, 'OUT+'), idx(id, 'OUT-'), 5.0, 0.05, { part: id, kind: 'buck' })
+          // a potência da saída vem da entrada: Iin = Pout / (η·Vin), com η ≈ 85 % (s.iin, ver update)
+          if (s.reg && s.iin > 0) src(idx(id, 'IN-'), idx(id, 'IN+'), s.iin * 1e9, 1e9)
           break
         }
         case 'l298n': {
@@ -305,6 +307,10 @@ export function createCircuit(parts, wires, ext = {}) {
             const vcc = vd(id, 'VCC', 'GND')
             src(idx(id, 'DO'), g, r.do ? vcc : 0, r.do ? 10000 : 80)
             src(idx(id, 'AO'), g, (r.ao * vcc) / 5, 1000)
+          } else {
+            // sem alimentação: as saídas ficam presas à massa pelo módulo (não flutuam)
+            cond(idx(id, 'DO'), g, 1e-5)
+            cond(idx(id, 'AO'), g, 1e-5)
           }
           break
         }
@@ -312,6 +318,7 @@ export function createCircuit(parts, wires, ext = {}) {
           const g = idx(id, 'GND')
           cond(idx(id, 'VCC'), g, 1 / 330)
           if (s.powered && !s.damaged) src(idx(id, 'Echo'), g, 0, 100)
+          else cond(idx(id, 'Echo'), g, 1e-5) // sem alimentação o Echo não flutua
           break
         }
         case 'servo':
@@ -460,6 +467,12 @@ export function createCircuit(parts, wires, ext = {}) {
         case 'buck':
           set(s, 'reg', vdiff(p.id, 'IN+', 'IN-') >= 6.5)
           set(s, 'powered', s.reg)
+          {
+            // corrente pedida à entrada (passos de 10 mA: não fica a oscilar com a queda da bateria)
+            const iout = s.reg ? Math.max(0, (5 - vdiff(p.id, 'OUT+', 'OUT-')) / 0.05) : 0
+            const vin = Math.max(6.5, vdiff(p.id, 'IN+', 'IN-'))
+            set(s, 'iin', Math.round(Math.min(4, (5 * iout) / (0.85 * vin)) * 100) / 100)
+          }
           break
         case 'ir': {
           const vcc = vdiff(p.id, 'VCC', 'GND')
@@ -658,5 +671,9 @@ export function diagnose(parts, wires) {
     }
   }
   if (!parts.some((p) => isBoard(p.type))) issues.push({ level: 'info', msg: i18n.m('Ainda não há Arduino no projeto.', 'There is no Arduino in the project yet.'), parts: [] })
+  // um aviso mais preciso cobre estas peças (ex.: Pico4Drive desligada com módulos no trilho dos GP):
+  // o "sem alimentação" genérico delas mandava ligar o VCC onde ele já está
+  const covered = new Set(issues.flatMap((it) => it.covers || []))
+  if (covered.size) for (let k = issues.length - 1; k >= 0; k--) if (issues[k].parts?.length === 1 && covered.has(issues[k].parts[0]) && /sem alimentação|has no power|no power/i.test(issues[k].msg)) issues.splice(k, 1)
   return { issues, circuit: ckt }
 }

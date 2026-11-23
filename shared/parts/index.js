@@ -36,6 +36,7 @@ import { GROUP_CASA } from './group-casa.js'
 import { GROUP_MDF } from './group-mdf.js'
 import { GROUP_CAO } from './group-cao.js'
 import { GROUP_PATO } from './group-pato.js'
+import { GROUP_MICROBAN } from './group-microban.js'
 import { GROUP_V } from './group-v.js'
 
-export const PART_DEFS = [frame, mega, esp32, esp32Uno, pico, rgbled, lcd1602, ...GROUP_A, ...GROUP_B, ...GROUP_C, ...GROUP_D, ...GROUP_E, ...GROUP_F, ...GROUP_ROBOT, ...GROUP_G, ...GROUP_PICO, ...GROUP_MECH, ...GROUP_MATERIAL, ...GROUP_CASA, ...GROUP_MDF, ...GROUP_CAO, ...GROUP_PATO, ...GROUP_V]
+export const PART_DEFS = [frame, mega, esp32, esp32Uno, pico, rgbled, lcd1602, ...GROUP_A, ...GROUP_B, ...GROUP_C, ...GROUP_D, ...GROUP_E, ...GROUP_F, ...GROUP_ROBOT, ...GROUP_G, ...GROUP_PICO, ...GROUP_MECH, ...GROUP_MATERIAL, ...GROUP_CASA, ...GROUP_MDF, ...GROUP_CAO, ...GROUP_PATO, ...GROUP_MICROBAN, ...GROUP_V]

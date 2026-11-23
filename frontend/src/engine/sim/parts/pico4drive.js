@@ -10,6 +10,7 @@
 //  - 74HC4051: entrada ANx (470 Ω + ~80 Ω do interruptor) ligada ao GP28 conforme GP18–20.
 //  - Divisores: GND —2K2— OUT —1K2— 5V —4K7— 12V.
 //  - Trilho dos GPIO: 3V3 / 5V / VIN conforme o jumper (config.rail).
+import { DEFS } from '../../../../../shared/components.js'
 import * as i18n from '../../../../../shared/i18n.js'
 const DRV = [
   ['GP11', 'GP10', 'M1A', 'M1B'],
@@ -193,6 +194,26 @@ export default {
     }
     for (const d of ['D1', 'D2']) {
       if (isC(`${d}.5V`) && vd(`${d}.5V`, 'GND') > 5.6) issues.push({ level: 'warn', msg: i18n.m(`${name}: ${vd(`${d}.5V`, 'GND').toFixed(1)} V na entrada de 5 V do divisor ${d.slice(1)} — para até 12 V use a entrada ${d}.12V.`, `${name}: ${vd(`${d}.5V`, 'GND').toFixed(1)} V on the 5 V input of divider ${d.slice(1)} — for up to 12 V use input ${d}.12V.`), parts: [part.id] })
+    }
+    // trilho dos GPIO no jumper 5V/VIN com a placa a arrancar desligada: as peças ligadas aos pinos V
+    // dos GP (ou ao 5V/VIN) só têm tensão depois de carregar em ON — o fio está certo, falta ligar a placa
+    if (cfg.rail !== '3V3' && cfg.autoOn === false) {
+      const users = [...new Set([nets.netOf(part.id, 'GP0.V'), nets.netOf(part.id, 'J.5V'), nets.netOf(part.id, 'J.VIN')])]
+        .flatMap((n) => nets.partsOnNet(n))
+        .filter((q) => q.id !== part.id && q.type !== 'battery')
+      if (users.length) {
+        const list = users.map((q) => DEFS[q.type]?.short || DEFS[q.type]?.name || q.type).join(', ')
+        issues.push({
+          level: 'warn',
+          msg: i18n.m(
+            `${name}: ${list} ${users.length > 1 ? 'estão' : 'está'} nos pinos V dos GP (jumper ${cfg.rail}), que só têm tensão com a placa LIGADA. A placa arranca desligada ("Ao iniciar: Desligada"): carregue em ON durante a simulação, ou mude "Ao iniciar" para Ligada. Um programa que procure estes módulos logo no setup() não os encontra antes de carregar em ON.`,
+            `${name}: ${list} ${users.length > 1 ? 'are' : 'is'} on the GP V pins (jumper ${cfg.rail}), which only have power with the board ON. The board starts off ("At start: Off"): press ON during the simulation, or set "At start" to On. A program that looks for these modules in setup() won't find them before ON is pressed.`,
+          ),
+          parts: [part.id, ...users.map((q) => q.id)],
+          // estas peças estão bem ligadas: o aviso genérico "sem alimentação" delas sai (electrical.js)
+          covers: users.map((q) => q.id),
+        })
+      }
     }
     if (cfg.rail !== '3V3') {
       const v = vd('GP0.V', 'GND')

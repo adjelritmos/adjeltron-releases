@@ -59,8 +59,9 @@ import { GROUP_CASA } from './group-casa.js'
 import { GROUP_MDF } from './group-mdf.js'
 import { GROUP_CAO } from './group-cao.js'
 import { GROUP_PATO } from './group-pato.js'
+import { GROUP_MICROBAN } from './group-microban.js'
 import { GROUP_V } from './group-v.js'
 import rgbled from './rgbled.js'
 import lcd1602 from './lcd1602.js'
 
-export const BEHAVIORS = Object.fromEntries([rgbled, lcd1602, ...GROUP_A, ...GROUP_B, ...GROUP_C, ...GROUP_D, ...GROUP_E, ...GROUP_F, ...GROUP_ROBOT, ...GROUP_G, ...GROUP_PICO, ...GROUP_MECH, ...GROUP_CASA, ...GROUP_MDF, ...GROUP_CAO, ...GROUP_PATO, ...GROUP_V].map((b) => [b.type, b]))
+export const BEHAVIORS = Object.fromEntries([rgbled, lcd1602, ...GROUP_A, ...GROUP_B, ...GROUP_C, ...GROUP_D, ...GROUP_E, ...GROUP_F, ...GROUP_ROBOT, ...GROUP_G, ...GROUP_PICO, ...GROUP_MECH, ...GROUP_CASA, ...GROUP_MDF, ...GROUP_CAO, ...GROUP_PATO, ...GROUP_MICROBAN, ...GROUP_V].map((b) => [b.type, b]))

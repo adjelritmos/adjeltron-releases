@@ -23,6 +23,7 @@ import { UI_CASA } from './group-casa.js'
 import { UI_MDF } from './group-mdf.js'
 import { UI_CAO } from './group-cao.js'
 import { UI_PATO } from './group-pato.js'
+import { UI_MICROBAN } from './group-microban.js'
 import { UI_V } from './group-v.js'
 import rgbled from './rgbled.jsx'
 import lcd1602 from './lcd1602.jsx'
@@ -32,4 +33,4 @@ import mega from './mega.jsx'
 import pico from './pico.jsx'
 import frame from './frame.jsx'
 
-export const PART_UI = Object.fromEntries([frame, mega, esp32, esp32Uno, pico, rgbled, lcd1602, ...UI_A, ...UI_B, ...UI_C, ...UI_D, ...UI_E, ...UI_F, ...UI_ROBOT, ...UI_G, ...UI_PICO, ...UI_MECH, ...UI_MATERIAL, ...UI_CASA, ...UI_MDF, ...UI_CAO, ...UI_PATO, ...UI_V].map((u) => [u.type, u]))
+export const PART_UI = Object.fromEntries([frame, mega, esp32, esp32Uno, pico, rgbled, lcd1602, ...UI_A, ...UI_B, ...UI_C, ...UI_D, ...UI_E, ...UI_F, ...UI_ROBOT, ...UI_G, ...UI_PICO, ...UI_MECH, ...UI_MATERIAL, ...UI_CASA, ...UI_MDF, ...UI_CAO, ...UI_PATO, ...UI_MICROBAN, ...UI_V].map((u) => [u.type, u]))

@@ -64,6 +64,7 @@ export const MODELS = {
   ili9341: tftSpi,
   st7789: tftSpi,
   st7735: tftSpi,
+  gc9a01: tftSpi,
   bmp280,
   bh1750,
 }

@@ -54,7 +54,7 @@ export function ds18b20(ctx) {
       if (cmd === 0x44) {
         const bits = bitsRes()
         const step = { 9: 0.5, 10: 0.25, 11: 0.125, 12: 0.0625 }[bits]
-        const t = ctx.input().value ?? 22
+        const t = Math.max(-55, Math.min(125, ctx.input().value ?? 22)) // gama do DS18B20
         convEnd = ctx.now() + CONV_MS[bits] * 1000
         if (ctx.s) ctx.s.dsPending = { at: convEnd, v: Math.round(t / step) * step }
         status = () => (ctx.now() >= convEnd ? 1 : 0)

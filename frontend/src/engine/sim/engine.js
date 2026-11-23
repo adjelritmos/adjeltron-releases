@@ -1,7 +1,7 @@
 // Motor da simulação genérico: Arduino virtual + solver elétrico + mecânica.
 // Passo de 1 ms em tempo simulado; o programa corre em sincronia com a física.
 import * as THREE from 'three'
-import { DEFS, CHASSIS, isBoard, boardProfile, UNO_PROFILE, motorWheel, baseDims, partScale, partSize, partBoxes, liveBoxes } from '../../../../shared/components.js'
+import { DEFS, CHASSIS, isBoard, boardProfile, UNO_PROFILE, motorWheel, baseDims, partScale, partSize, partBoxes, liveBoxes, mountsOf } from '../../../../shared/components.js'
 import { physicsModeOf } from '../../../../shared/physics.js'
 import { fixAxleParents } from '../../../../shared/assembly.js'
 import { evalCfg } from '../../../../shared/parts/_mech.js'
@@ -136,6 +136,45 @@ export function createEngine({ parts: inParts, wires, code, compiled = null, tra
         gain: 1 + rand(0.05),
       }
     })
+  // rodas no veio de outros motores (motor TT, motores com encoder…) presos ao chassi-veículo em
+  // qualquer ponto de fixação (por baixo, em cima…): também empurram o veículo. A velocidade de
+  // cada roda no chão sai da geometria real (eixo e sentido do veio no referencial do chassi),
+  // por isso um motor virado ao contrário anda ao contrário, como no real.
+  const shaftWheels = []
+  {
+    const byId = new Map(parts.map((p) => [p.id, p]))
+    const rootOf = (p) => {
+      let q = p
+      while (q.parent && byId.get(q.parent.id)) q = byId.get(q.parent.id)
+      return q
+    }
+    let W0 = null
+    const rotOf = (m) => {
+      const q = new THREE.Quaternion()
+      m.decompose(new THREE.Vector3(), q, new THREE.Vector3())
+      return q
+    }
+    for (const w of parts) {
+      const wd = DEFS[w.type]?.wheel
+      const m = w.parent && byId.get(w.parent.id)
+      if (typeof wd !== 'function' || !m || m.type === 'motor' || !mountsOf(m)[w.parent.mount]?.servo) continue
+      const veh = vehicleOf.get(rootOf(m).id)
+      if (!veh) continue
+      W0 ||= worldMatrices(parts)
+      const base = W0.get(veh.part.id).clone().invert().multiply(W0.get(m.id))
+      const A0 = base.clone().multiply(mountMatrix(m, w.parent.mount, 90))
+      const A1 = base.clone().multiply(mountMatrix(m, w.parent.mount, 91))
+      // rotação de 1° no ângulo do veio → vetor velocidade angular (rad por grau) no chassi
+      const dq = rotOf(A1).multiply(rotOf(A0).invert())
+      const ang = 2 * Math.acos(Math.min(1, Math.abs(dq.w)))
+      const sn = Math.sin(ang / 2) || 1
+      const sg = dq.w < 0 ? -1 : 1
+      const om = new THREE.Vector3(dq.x, dq.y, dq.z).multiplyScalar((sg * ang) / sn)
+      const sc = partScale(w)
+      const r = wd(w.config || {}).r * (sc ? Math.abs(sc[0]) : 1)
+      shaftWheels.push({ veh, motor: m.id, z: new THREE.Vector3().setFromMatrixPosition(A0).z, om, r })
+    }
+  }
   const servos = parts.filter((p) => DEFS[p.type].servo).map((p) => ({ part: p, angle: 90, target: null, moving: 0, speed: DEFS[p.type].servo.speed }))
   const servoOf = new Map(servos.map((s) => [s.part.id, s]))
   const irs = parts.filter((p) => p.type === 'ir').map((p) => ({ part: p, ao: 0.4, do: 0, noise: rand(0.06) }))
@@ -684,7 +723,8 @@ export function createEngine({ parts: inParts, wires, code, compiled = null, tra
         _sd.copy(fwd).addScaledVector(side, Math.tan(a)).addScaledVector(up, Math.tan(e)).normalize()
         d = Math.min(d, raycast3d(_so, _sd, skip))
       }
-    s.dist = d + rand(0.3)
+    // zona cega: abaixo de ~2 cm o HC-SR04 real não distingue o eco do disparo
+    s.dist = Math.max(2, d) + rand(0.3)
     return s.dist
   }
 
@@ -770,13 +810,15 @@ export function createEngine({ parts: inParts, wires, code, compiled = null, tra
     if (txFree - rt.t > 64 * charUs) rt.t = txFree - 64 * charUs
     onSerial?.(txt)
   }
-  const fmt = (v, base) => {
+  // real: o tradutor marca print(x, 2) quando x é float/double (2 casas decimais, não binário)
+  const fmt = (v, base, real) => {
     // objetos com formato próprio (ex.: struct tm em Serial.println(&timeinfo, "%H:%M"))
     if (v && typeof v.__fmt === 'function') return v.__fmt(base)
     if (typeof v === 'number') {
       if (base === 16) return Math.trunc(v).toString(16).toUpperCase()
       // print(x, 2): BIN para inteiros; com um float (valor não inteiro) são 2 casas decimais
-      if (base === 2 && Number.isInteger(v)) return Math.trunc(v).toString(2)
+      if (real && (base === 2 || base == null)) return Number.isNaN(v) ? 'nan' : Number.isFinite(v) ? v.toFixed(2) : v > 0 ? 'inf' : '-inf'
+      if (base === 2 && Number.isInteger(v) && !real) return Math.trunc(v).toString(2)
       // print(x, n) com n casas decimais (n ≠ 2, que é BIN)
       if (typeof base === 'number' && base >= 0 && base < 10 && base !== 2) return Number.isNaN(v) ? 'nan' : v.toFixed(base)
       if (Number.isNaN(v)) return 'nan'
@@ -785,6 +827,11 @@ export function createEngine({ parts: inParts, wires, code, compiled = null, tra
     }
     if (typeof v === 'boolean') return v ? '1' : '0'
     return String(v)
+  }
+  // bits de uma porta do ATmega328P → números dos pinos Arduino
+  const avrPort = (port) => {
+    if (prof.mcu !== 'ATmega328P') throw new Error(i18n.m(`Registos PORT/DDR/PIN${port}: o simulador só os tem no ATmega328P (Uno, Nano). Use digitalWrite/digitalRead no ${prof.mcu}.`, `PORT/DDR/PIN${port} registers: the simulator only has them on the ATmega328P (Uno, Nano). Use digitalWrite/digitalRead on the ${prof.mcu}.`))
+    return port === 'D' ? [0, 1, 2, 3, 4, 5, 6, 7] : port === 'B' ? [8, 9, 10, 11, 12, 13] : [14, 15, 16, 17, 18, 19]
   }
   const checkPin = (n, fn) => {
     if (typeof n !== 'number' || Number.isNaN(n) || !prof.pins[n]) throw new Error(i18n.m(`${fn}(): o pino ${n} não existe no ${prof.mcu}${isEsp ? ' (use o número GPIO, ex.: 2, 4, 13…)' : isPico ? ` (use o número GPn: 0–22 ou 26–28; LED_BUILTIN = ${prof.consts.LED_BUILTIN})` : ''}`, `${fn}(): pin ${n} does not exist on the ${prof.mcu}${isEsp ? ' (use the GPIO number, e.g. 2, 4, 13…)' : isPico ? ` (use the GPn number: 0–22 or 26–28; LED_BUILTIN = ${prof.consts.LED_BUILTIN})` : ''}`))
@@ -875,6 +922,46 @@ export function createEngine({ parts: inParts, wires, code, compiled = null, tra
     HIGH: 1, LOW: 0, INPUT: 'INPUT', OUTPUT: 'OUTPUT', INPUT_PULLUP: 'INPUT_PULLUP', INPUT_PULLDOWN: 'INPUT_PULLDOWN',
     ...prof.consts, DEC: 10, HEX: 16, BIN: 2, PI: Math.PI, HALF_PI: Math.PI / 2, TWO_PI: 2 * Math.PI, EULER: Math.E, DEG_TO_RAD: Math.PI / 180, RAD_TO_DEG: 180 / Math.PI,
     INFINITY: Infinity, NAN: NaN, M_PI: Math.PI,
+    // registos das portas do ATmega328P (compiler.js: avrPortRegs). Bit → pino Arduino.
+    __BV: (n) => 1 << n,
+    __regR(kind, port) {
+      const map = avrPort(port)
+      let v = 0
+      if (kind === 'PIN') {
+        rt.t += 1
+        solve()
+      }
+      for (let b = 0; b < map.length; b++) {
+        const n = map[b]
+        const p = pins[n]
+        // PINx lê os 8 bits de uma vez: um pino solto que o programa nem usa não gera aviso
+        // (dá 0/1 ao acaso, como no chip)
+        const pinBit = () => (p.mode === 'OUTPUT' ? p.out : edgeOv?.has(n) ? edgeOv.get(n) : circuit.floating(arduino.id, pinName(n)) ? (Math.random() < 0.5 ? 1 : 0) : pinV(n) > vioNow() / 2)
+        const on = kind === 'PIN' ? pinBit() : kind === 'DDR' ? p.mode === 'OUTPUT' : p.mode === 'OUTPUT' ? p.out : p.mode === 'INPUT_PULLUP'
+        if (on) v |= 1 << b
+      }
+      return v
+    },
+    __regW(kind, port, val) {
+      const map = avrPort(port)
+      // PINx = v: cada bit a 1 troca o bit do PORTx (como no chip)
+      if (kind === 'PIN') return api.__regW('PORT', port, api.__regR('PORT', port) ^ val)
+      for (let b = 0; b < map.length; b++) {
+        const n = map[b]
+        const p = pins[n]
+        const bit = (val >> b) & 1
+        if (kind === 'DDR') {
+          const mode = bit ? 'OUTPUT' : p.mode === 'INPUT_PULLUP' || (p.mode === 'OUTPUT' && p.out) ? 'INPUT_PULLUP' : 'INPUT'
+          if (p.mode !== mode) api.pinMode(n, mode)
+        } else if (p.mode === 'OUTPUT') {
+          if (p.out !== bit) api.digitalWrite(n, bit)
+        } else if (n > 1) {
+          // entrada: o bit do PORTx liga/desliga o pull-up (D0/D1 ficam com a Serial)
+          const mode = bit ? 'INPUT_PULLUP' : 'INPUT'
+          if (p.mode !== mode) api.pinMode(n, mode)
+        }
+      }
+    },
     pinMode(n, mode) {
       checkPin(n, 'pinMode')
       if (prof.inputOnly?.includes(n) && mode !== 'INPUT') {
@@ -1070,8 +1157,8 @@ export function createEngine({ parts: inParts, wires, code, compiled = null, tra
         serialBegun = true
         baud = b || 9600
       },
-      print: (v, b) => serialOut(fmt(v, b)),
-      println: (v = '', b) => serialOut(fmt(v, b) + '\n'),
+      print: (v, b, real) => serialOut(fmt(v, b, real)),
+      println: (v = '', b, real) => serialOut(fmt(v, b, real) + '\n'),
       write: (v) => serialOut(typeof v === 'number' ? String.fromCharCode(v) : String(v)),
       // receção: texto enviado pelo Monitor Série do browser (engine.serialInput)
       available: () => serialRx.length,
@@ -1621,10 +1708,35 @@ export function createEngine({ parts: inParts, wires, code, compiled = null, tra
         const ms = motors.filter((m) => m.vehicle === veh && m.side === s)
         return ms.length ? ms.reduce((a, m) => a + m.w * motorWheel(m.part.config).r * m.dir, 0) / ms.length : 0
       }
-      const vl = sideV('L')
-      const vr = sideV('R')
-      const v = (vl + vr) / 2
-      let w = (vr - vl) / (DEFS[veh.part.type].trackEff || CHASSIS.trackWidth)
+      let vl = sideV('L')
+      let vr = sideV('R')
+      const track = DEFS[veh.part.type].trackEff || CHASSIS.trackWidth
+      let v = (vl + vr) / 2
+      let w = (vr - vl) / track
+      // rodas noutros motores (shaftWheels): velocidade no chão de cada uma (ponto de contacto
+      // por baixo do eixo) e ajuste do movimento do chassi a todas: v + w·z em cada roda
+      const sw = shaftWheels.filter((x) => x.veh === veh)
+      if (sw.length) {
+        const pts = []
+        if (motors.some((m) => m.vehicle === veh && m.side === 'L')) pts.push([-track / 2, vl])
+        if (motors.some((m) => m.vehicle === veh && m.side === 'R')) pts.push([track / 2, vr])
+        for (const x of sw) {
+          const k = +live[x.motor]?.mountVel || 0 // graus/s do veio
+          // (Ω × (0, −r, 0)).x = Ωz·r → o chão "anda" para trás, o chassi para a frente: −Ωz·r
+          pts.push([x.z, -x.om.z * k * x.r])
+        }
+        const zm = pts.reduce((a, q) => a + q[0], 0) / pts.length
+        v = pts.reduce((a, q) => a + q[1], 0) / pts.length
+        let num = 0
+        let den = 0
+        for (const [z, u] of pts) {
+          num += (z - zm) * (u - v)
+          den += (z - zm) ** 2
+        }
+        w = den > 1e-6 ? num / den : 0
+        // velocidade no centro do chassi (z = 0), não no centro das rodas
+        v -= w * zm
+      }
       if (realism && Math.abs(v) > 1) w += rand(0.04)
       const p = veh.pose
       const nt = p.theta + w * dt

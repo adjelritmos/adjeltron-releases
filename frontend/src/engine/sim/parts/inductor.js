@@ -36,15 +36,21 @@ export default {
     }
     const lr = Leff(s, sp) / DT
     const v = vd('1', '2')
-    const ni = (v + lr * (s.il || 0)) / (sp.dcr + lr)
+    const i0 = s.il || 0
+    const ni = (v + lr * i0) / (sp.dcr + lr)
     if (Math.abs(ni - (s.il || 0)) > 1e-6) invalidate()
     s.il = ni
     s.v = v
-    if (Math.abs(v) > 30) {
-      s.spike = Math.max(s.spike || 0, Math.abs(v))
+    // Pico ao cortar a corrente: a bobina passa a fonte (tensão ao contrário da corrente) e no
+    // instante do corte dá i0 × R, sendo R a resistência que ela vê (|v / i| neste passo: ~1 kΩ se
+    // ficou em aberto, quase nada com díodo de roda livre). O passo de 1 ms só mostra a média desse
+    // pico (L·Δi/dt), por isso o valor real é estimado aqui.
+    const vpk = v * ni < 0 && Math.abs(ni) > 1e-6 ? Math.max(Math.abs(v), Math.abs(i0) * Math.abs(v / ni)) : Math.abs(v)
+    if (vpk > 30) {
+      s.spike = Math.max(s.spike || 0, vpk)
       if (!s.warnedSpike) {
         s.warnedSpike = true
-        log(i18n.m(`⚡ Pico de ${Math.abs(v).toFixed(0)} V na bobina ao cortar a corrente! Sem díodo de roda livre (1N4007/1N5819 em paralelo, cátodo no +) este pico estraga o transístor que a comanda.`, `⚡ ${Math.abs(v).toFixed(0)} V spike on the coil when cutting the current! Without a flyback diode (1N4007/1N5819 in parallel, cathode to +) this spike damages the transistor driving it.`), 'warn')
+        log(i18n.m(`⚡ Pico de ${vpk.toFixed(0)} V na bobina ao cortar a corrente! Sem díodo de roda livre (1N4007/1N5819 em paralelo, cátodo no +) este pico estraga o transístor que a comanda.`, `⚡ ${vpk.toFixed(0)} V spike on the coil when cutting the current! Without a flyback diode (1N4007/1N5819 in parallel, cathode to +) this spike damages the transistor driving it.`), 'warn')
       }
     }
     if (Math.abs(ni) > sp.isat * 1.05 && !s.warnedSat) {
@@ -56,6 +62,7 @@ export default {
     live.i = Math.round((s.il || 0) * 10000) / 10000
     live.v = Math.round((s.v || 0) * 100) / 100
     live.sat = !!s.warnedSat
+    live.spike = Math.round(s.spike || 0)
   },
   diagnose({ part, cfg, isC, name, issues, vd, nets }) {
     const un = ['1', '2'].filter((x) => !isC(x))

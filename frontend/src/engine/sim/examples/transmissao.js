@@ -156,7 +156,7 @@ void loop() {
   // controlador P com PWM mínimo (zona morta do motor) e tolerância
   int pwm = 0;
   if (abs(erro) > TOLERANCIA) {
-    pwm = KP * erro;
+    pwm = (int)(KP * erro);
     if (abs(pwm) < PWM_MIN) pwm = erro > 0 ? PWM_MIN : -PWM_MIN;
   }
   motor(constrain(pwm, -200, 200));

@@ -13,8 +13,10 @@ export function LeadPair({ from, pins }) {
   // fios do clip/suporte até aos pinos, com uma pequena curva e a ponta descarnada estanhada
   return pins.map((p, i) => {
     const c = i ? '#1c1c1c' : '#d32f2f'
-    const a = [from[0], from[1], from[2] + (i ? 0.25 : -0.25)]
-    const m = [(a[0] + p.pos[0]) / 2, 0.35, (a[2] + p.pos[2]) / 2 + (i ? 0.25 : -0.25)]
+    // rabicho curto e a direito: sai do suporte já à altura do pino (sem subir e descer, que
+    // fazia uma dobra viva onde o jumper começa)
+    const a = [from[0], Math.max(p.pos[1], Math.min(from[1], p.pos[1] + 0.15)), (from[2] + (i ? 0.25 : -0.25) + p.pos[2]) / 2]
+    const m = [(a[0] + p.pos[0] - 0.3) / 2, (a[1] + p.pos[1]) / 2, p.pos[2]]
     const end = [p.pos[0] - 0.3, p.pos[1], p.pos[2]]
     return (
       <group key={p.id}>

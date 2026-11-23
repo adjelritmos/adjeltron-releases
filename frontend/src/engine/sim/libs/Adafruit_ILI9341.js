@@ -47,7 +47,10 @@ export default {
             return null
           }
           const has = (pin, n) => env.pinsOf(p.id, pin).includes(n)
-          if (!has('DC', this.dc)) env.warnOnce('tftdc', i18n.m(`TFT ILI9341: D/C do ecrã não está no pino ${this.dc} — sem D/C os comandos são lidos como dados e o ecrã fica branco.`, `TFT ILI9341: the display's D/C is not on pin ${this.dc} — without D/C commands are read as data and the screen stays white.`))
+          if (!has('DC', this.dc)) {
+            env.warnOnce('tftdc', i18n.m(`TFT ILI9341: D/C do ecrã não está no pino ${this.dc} — sem D/C os comandos são lidos como dados e o ecrã fica branco.`, `TFT ILI9341: the display's D/C is not on pin ${this.dc} — without D/C commands are read as data and the screen stays white.`))
+            return null
+          }
           const spi = this.soft || hwSpi(env)
           if (!has('MOSI', spi.mosi) || !has('SCK', spi.sck)) {
             env.warnOnce('tftspi', i18n.m(`TFT ILI9341: MOSI tem de ir ao pino ${spi.mosi} e SCK ao ${spi.sck}${this.soft ? ' (pinos do construtor)' : ' (SPI por hardware)'}. O ecrã não recebe nada.`, `TFT ILI9341: MOSI must go to pin ${spi.mosi} and SCK to ${spi.sck}${this.soft ? ' (constructor pins)' : ' (hardware SPI)'}. The display receives nothing.`))

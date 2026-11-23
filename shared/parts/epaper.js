@@ -1,6 +1,7 @@
 // Ecrãs e-paper (tinta eletrónica) em módulo SPI ao estilo Waveshare, um tipo por tamanho.
 // Pinos (conector de 8 vias na ponta esquerda): VCC, GND, DIN, CLK, CS, DC, RST, BUSY.
-// A imagem fica no ecrã sem alimentação; cada atualização demora (o pino BUSY fica a HIGH).
+// A imagem fica no ecrã sem alimentação; cada atualização demora (o pino BUSY fica a HIGH nos
+// controladores SSD16xx e a LOW nos UC81xx — busyLow — como na GxEPD2).
 import { rowZ } from '../geometry.js'
 
 // nw × nh = dimensões nativas do controlador (WIDTH × HEIGHT na GxEPD2); portrait = nativo
@@ -12,8 +13,8 @@ export const EPAPER = {
   epaper213: { inch: '2,13', nw: 122, nh: 250, portrait: true, ctl: 'SSD1680', L: 6.5, D: 3.0, glass: { x: [-2.66, 3.26], z: [-1.46, 1.46] }, act: { x: [-2.13, 2.725], z: [-1.185, 1.185] }, colors: ['bw', 'bwr'], full: { bw: 2000, bwr: 15000 }, part: { bw: 300, bwr: 0 } },
   epaper290: { inch: '2,9', nw: 128, nh: 296, portrait: true, ctl: 'SSD1680', L: 8.95, D: 3.8, glass: { x: [-3.5, 4.4], z: [-1.83, 1.83] }, act: { x: [-2.89, 3.8], z: [-1.4525, 1.4525] }, colors: ['bw', 'bwr'], full: { bw: 2000, bwr: 15000 }, part: { bw: 300, bwr: 0 } },
   epaper420: { inch: '4,2', nw: 400, nh: 300, ctl: 'SSD1683', L: 10.3, D: 7.85, glass: { x: [-4.0, 5.1], z: [-3.85, 3.85] }, act: { x: [-3.69, 4.79], z: [-3.18, 3.18] }, colors: ['bw', 'bwr'], full: { bw: 3500, bwr: 16000 }, part: { bw: 600, bwr: 0 } },
-  epaper750: { inch: '7,5', nw: 800, nh: 480, ctl: 'UC8179', L: 17.8, D: 11.4, glass: { x: [-8.4, 8.62], z: [-5.56, 5.56] }, act: { x: [-8.05, 8.27], z: [-4.895, 4.895] }, colors: ['bw', 'bwr'], full: { bw: 4000, bwr: 20000 }, part: { bw: 900, bwr: 0 } },
-  epaper565: { inch: '5,65', nw: 600, nh: 448, ctl: 'UC8159C', L: 13.0, D: 10.0, glass: { x: [-5.9, 6.6], z: [-4.98, 4.98] }, act: { x: [-5.6, 5.89], z: [-4.29, 4.29] }, colors: ['7c'], full: { '7c': 12000 }, part: { '7c': 0 } },
+  epaper750: { inch: '7,5', nw: 800, nh: 480, ctl: 'UC8179', busyLow: true, L: 17.8, D: 11.4, glass: { x: [-8.4, 8.62], z: [-5.56, 5.56] }, act: { x: [-8.05, 8.27], z: [-4.895, 4.895] }, colors: ['bw', 'bwr'], full: { bw: 4000, bwr: 20000 }, part: { bw: 900, bwr: 0 } },
+  epaper565: { inch: '5,65', nw: 600, nh: 448, ctl: 'UC8159C', busyLow: true, L: 13.0, D: 10.0, glass: { x: [-5.9, 6.6], z: [-4.98, 4.98] }, act: { x: [-5.6, 5.89], z: [-4.29, 4.29] }, colors: ['7c'], full: { '7c': 12000 }, part: { '7c': 0 } },
 }
 export const EPAPER_TYPES = new Set(Object.keys(EPAPER))
 // dimensões da imagem na face do módulo (sempre "deitada")
@@ -42,7 +43,7 @@ function make(type) {
     cat: 'output',
     description:
       `Ecrã de tinta eletrónica ${g.inch}" (${fw}×${fh} pontos, controlador ${g.ctl}). Como papel: só gasta energia ao mudar e a imagem fica mesmo sem alimentação. Módulo com regulador e conversor de nível: VCC 3,3–5 V, GND → GND, DIN → MOSI (D11 no Uno), CLK → SCK (D13), CS, DC, RST e BUSY a pinos à escolha (ex.: 10, 9, 8, 7). ` +
-      `Cada atualização completa demora ~${(g.full[c0] / 1000).toFixed(1).replace('.', ',')} s e pisca (preto/branco) — enquanto isso BUSY fica a HIGH. ` +
+      `Cada atualização completa demora ~${(g.full[c0] / 1000).toFixed(1).replace('.', ',')} s e pisca (preto/branco) — enquanto isso BUSY fica a ${g.busyLow ? 'LOW (neste controlador o BUSY é ativo a LOW; em repouso está a HIGH)' : 'HIGH'}. ` +
       (g.part[c0] ? `A atualização parcial (setPartialWindow) demora ~${g.part[c0]} ms e não pisca. ` : '') +
       'Biblioteca GxEPD2 (com Adafruit_GFX): desenhe entre firstPage() e nextPage(), ou chame display().',
     size: [g.L, 0.6, g.D],

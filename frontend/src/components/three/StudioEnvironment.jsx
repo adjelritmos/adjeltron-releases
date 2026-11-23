@@ -1,8 +1,10 @@
 // Iluminação e materiais "fotográficos" partilhados pela cena 3D, pelo estúdio de miniaturas e
 // pelas pré-visualizações:
-//  - mapa de ambiente procedural (sala de estúdio da three.js, sem descarregar HDR), fraco: dá
-//    reflexos aos metais sem os transformar em espelhos;
-//  - mapeamento de tons AgX (como uma câmara: realces suaves, cores menos "de desenho animado");
+//  - mapa de ambiente procedural de estúdio fotográfico (sala creme com softboxes fortes e
+//    cartões escuros, sem descarregar HDR): os metais têm algo para refletir e contrastar, os
+//    vidros pretos ganham reflexos nítidos das softboxes;
+//  - mapeamento de tons Neutral (mantém as cores reais das placas e plásticos; o AgX tirava-lhes
+//    saturação e acinzentava os pretos);
 //  - passagem de realismo nos materiais (uma vez por material, antes de desenhar): os plásticos
 //    e as placas ficam mates/acetinados, os metais acetinados (alumínio, estanho, latão reais não
 //    são cromados) e todas as superfícies ganham um grão fino (rugosidade + relevo) — acaba o
@@ -11,17 +13,50 @@
 import { useEffect } from 'react'
 import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 
 const CACHE = new WeakMap() // renderizador -> textura PMREM
+
+// estúdio de fotografia de produto: sala creme, softbox por cima, luz principal quente à frente
+// e à esquerda, recorte frio à direita, faixa atrás e cartões escuros (sem eles os metais
+// polidos só refletiriam claro e pareceriam plástico cinzento)
+function studioScene() {
+  const sc = new THREE.Scene()
+  const basic = (c) => new THREE.MeshBasicMaterial({ color: new THREE.Color(...c), side: THREE.DoubleSide })
+  const room = new THREE.Mesh(new THREE.BoxGeometry(40, 24, 40), basic([1.08, 1.04, 0.97]))
+  room.material.side = THREE.BackSide
+  room.position.y = 8
+  sc.add(room)
+  const plane = (w, h, x, y, z, c) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), basic(c))
+    m.position.set(x, y, z)
+    m.lookAt(0, 0, 0)
+    sc.add(m)
+  }
+  const k = (t, s) => t.map((v) => v * s)
+  plane(16, 12, 0, 19, 2, k([1, 0.97, 0.92], 4.2)) // softbox por cima
+  plane(10, 12, -16, 9, -11, k([1, 0.95, 0.88], 6.5)) // principal (quente)
+  plane(6, 14, 17, 6, 8, k([0.9, 0.95, 1], 3.5)) // recorte (frio)
+  plane(12, 3, 0, 5, -19, [2.5, 2.5, 2.5]) // faixa de trás
+  for (const [w, h, x, y, z] of [[3, 16, 19, 6, 14], [3, 16, -19, 6, 2], [14, 2.5, 4, 3, 19], [10, 2, -6, 12, -19]]) plane(w, h, x, y, z, [0.1, 0.1, 0.1])
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), basic([0.42, 0.4, 0.36]))
+  floor.rotation.x = -Math.PI / 2
+  floor.position.y = -3.9
+  sc.add(floor)
+  return sc
+}
 
 function envFor(gl) {
   let t = CACHE.get(gl)
   if (!t) {
     const pmrem = new THREE.PMREMGenerator(gl)
-    const room = new RoomEnvironment()
-    t = pmrem.fromScene(room, 0.04).texture
-    room.traverse((o) => o.geometry?.dispose?.())
+    const sc = studioScene()
+    t = pmrem.fromScene(sc, 0.03).texture
+    sc.traverse((o) => {
+      if (o.isMesh) {
+        o.geometry.dispose()
+        o.material.dispose()
+      }
+    })
     pmrem.dispose()
     CACHE.set(gl, t)
   }
@@ -76,10 +111,20 @@ export function realify(m) {
   // emissores (LEDs, displays): toneMapped=false marca-os mesmo quando ainda estão apagados
   const glowing = m.toneMapped === false || (m.emissive && m.emissiveIntensity > 0 && (m.emissive.r + m.emissive.g + m.emissive.b > 0.05 || m.emissiveMap))
   const clear = m.transparent && m.opacity < 0.95
+  // vidro preto brilhante (ecrãs, lentes escuras, verniz): muito escuro e liso, não metálico.
+  // Fica liso e com reflexos nítidos — tratado como plástico ficava mate e cinzento.
+  const c = m.color
+  const glossyBlack = m.metalness <= 0.3 && m.roughness <= 0.2 && !m.map && c && c.r + c.g + c.b < 0.06
   if (m.metalness > 0.5) {
-    // metal acetinado: nada de cromado perfeito
-    m.roughness = Math.max(m.roughness, 0.34)
-    m.envMapIntensity = 0.75
+    // metal acetinado: nada de cromado perfeito. O ambiente difuso é fraco, por isso a cor do
+    // metal (a sua refletância) sobe para continuar a ler-se como metal claro, não cinzento
+    m.roughness = Math.max(m.roughness, 0.3)
+    m.envMapIntensity = 0.85
+    if (c && !m.map) c.multiplyScalar(1.3)
+  } else if (glossyBlack) {
+    m.roughness = Math.max(m.roughness, 0.06)
+    m.envMapIntensity = 0.6
+    if (m.isMeshPhysicalMaterial) m.specularIntensity = Math.min(m.specularIntensity ?? 1, 0.5)
   } else if (clear) {
     m.roughness = Math.max(m.roughness, 0.06)
     m.envMapIntensity = 0.45
@@ -89,11 +134,11 @@ export function realify(m) {
     m.roughness = Math.max(m.roughness, 0.5)
     m.envMapIntensity = 0.32
   }
-  if (m.isMeshPhysicalMaterial && m.clearcoat > 0) {
+  if (m.isMeshPhysicalMaterial && m.clearcoat > 0 && !glossyBlack) {
     m.clearcoat = Math.min(m.clearcoat, 0.25)
     m.clearcoatRoughness = Math.max(m.clearcoatRoughness, 0.45)
   }
-  if (!clear && !glowing && !m.roughnessMap) {
+  if (!clear && !glowing && !glossyBlack && !m.roughnessMap) {
     m.roughnessMap = grain()
     if (!m.bumpMap) {
       m.bumpMap = grain()
@@ -110,13 +155,13 @@ const fix = (o) => {
   else realify(mm)
 }
 
-export function StudioEnvironment({ intensity = 0.3 }) {
+export function StudioEnvironment({ intensity = 0.42 }) {
   const { gl, scene } = useThree()
   useEffect(() => {
     scene.environment = envFor(gl)
     scene.environmentIntensity = intensity
-    gl.toneMapping = THREE.AgXToneMapping
-    gl.toneMappingExposure = 1.15
+    gl.toneMapping = THREE.NeutralToneMapping
+    gl.toneMappingExposure = 0.95
     // antes de cada desenho: materiais novos passam pela passagem de realismo
     if (!gl.__realPatched) {
       gl.__realPatched = true

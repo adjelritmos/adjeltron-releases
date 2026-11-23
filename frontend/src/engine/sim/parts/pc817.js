@@ -7,10 +7,20 @@ import * as i18n from '../../../../../shared/i18n.js'
 const VSAT = 0.15
 const RSAT = 8
 const RO = 1e5
+const HFE = 300 // ganho do fototransístor (só conta no 4N25, que tem a base acessível)
+
+// Corrente máxima de coletor. Com uma resistência entre a base e o emissor (4N25: s.rbe, em Ω;
+// 0 = curto) parte da fotocorrente da base (CTR·If / hFE) é desviada (0,6 V / Rbe) e não é
+// amplificada; com B–E em curto sobra só a do fotodíodo C–B.
+function icMax(s, ic0) {
+  if (s.rbe == null) return ic0
+  const ip = ic0 / (HFE + 1)
+  return ip + HFE * Math.max(0, ip - (s.rbe > 0 ? 0.6 / s.rbe : Infinity))
+}
 
 function nextMode(s, vd, part, circuit) {
   const iled = circuit ? circuit.diodeCurrent(part, 'led') : s.d_led ? Math.max(0, (vd('A', 'K') - 1.15) / 5) : 0
-  const ilim = Math.round((part.config?.ctr ?? 1) * iled * 1e6) / 1e6
+  const ilim = Math.round(icMax(s, (part.config?.ctr ?? 1) * iled) * 1e6) / 1e6
   const vce = vd('C', 'E')
   let m = s.mode || 'off'
   if (ilim < 1e-6) m = 'off'

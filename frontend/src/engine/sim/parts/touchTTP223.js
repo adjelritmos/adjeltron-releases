@@ -8,7 +8,7 @@ export default {
   stamp({ cond, src, s, cfg, vd }) {
     if (s.damaged) return cond('VCC', 'GND', 1e-9)
     cond('VCC', 'GND', 1 / 2000) // ~2,5 mA com o LED
-    if (!s.powered) return
+    if (!s.powered) return cond('SIG', 'GND', 1e-5) // sem alimentação a saída descarrega para o GND (~0 V)
     const on = !!s.out
     const high = cfg.activeLow ? !on : on
     src('SIG', 'GND', high ? vd('VCC', 'GND') : 0, 100)

@@ -8,7 +8,7 @@
 //   cujo DIN está na rede do pino (as mesmas da Adafruit_NeoPixel).
 // CRGB e CHSV funcionam com e sem `new` (CRGB(255, 0, 0), CRGB::Red, CHSV(h, 255, 255)).
 import { push } from '../parts/_groupA.js'
-import { NEO_TYPES } from '../parts/neopixel.js'
+import { neoTargets } from '../parts/neopixel.js'
 import * as i18n from '../../../../../shared/i18n.js'
 
 // ---------- matemática de 8 bits (lib8tion) ----------
@@ -531,7 +531,7 @@ export default {
         env.warnOnce('fl-data', i18n.m('FastLED: addLeds() sem vetor de LEDs (CRGB leds[N]).', 'FastLED: addLeds() without a LED array (CRGB leds[N]).'))
         return
       }
-      const targets = env.partsOnPin(c.pin).filter((q) => NEO_TYPES.has(q.type))
+      const targets = neoTargets(env, c.pin)
       if (!targets.length) {
         env.warnOnce(`fl-pin${c.pin}`, i18n.m(`FastLED: nenhuma fita/anel/matriz NeoPixel ligada ao pino ${c.pin} (fio do pino → DIN).`, `FastLED: no NeoPixel strip/ring/matrix connected to pin ${c.pin} (wire from pin → DIN).`))
         return
@@ -545,7 +545,7 @@ export default {
         const v = rgb.map((x, k) => scale8(x, adj[k]))
         for (let j = 0; j < 3; j++) bytes[i * 3 + j] = v[seq[j]] ?? 0
       }
-      for (const q of targets) push(env.state(q.id), { pin: c.pin, bytes }, 50)
+      for (const { part: q, thru } of targets) push(env.state(q.id), { pin: c.pin, bytes, thru }, 50)
     }
     const FastLED = {
       addLeds(tpl, leds, a, b) {

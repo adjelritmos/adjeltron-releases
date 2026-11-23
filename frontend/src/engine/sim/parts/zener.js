@@ -1,11 +1,14 @@
-// Zener 5,1 V (1N4733A): direto como um díodo (0,7 V); inverso conduz a 5,1 V
-// com 7 Ω de resistência dinâmica. Duas junções em antiparalelo. Máx. 1 W.
+// Zener 5,1 V (1N4733A): direto como um díodo (0,7 V); inverso prende a 5,1 V à corrente de
+// ensaio da folha de dados (Izt = 49 mA) com ~5 Ω de resistência dinâmica (máx. 7 Ω) — por isso
+// o joelho do modelo fica em 5,1 V − 49 mA × 5 Ω ≈ 4,86 V (com poucos mA lê-se ~4,9 V, como no real). Duas junções em antiparalelo. Máx. 1 W.
 import * as i18n from '../../../../../shared/i18n.js'
+const RZ = 5
+const VK = 5.1 - 0.049 * RZ
 export default {
   type: 'zener',
   diodes: () => [
     { key: 'f', a: 'A', k: 'K', vf: 0.7, r: 0.5 },
-    { key: 'z', a: 'K', k: 'A', vf: 5.1, r: 7 },
+    { key: 'z', a: 'K', k: 'A', vf: VK, r: RZ },
   ],
   step({ s, circuit, part, vd, live, log, burn }) {
     if (s.x_f) return
@@ -26,7 +29,7 @@ export default {
     const un = ['A', 'K'].filter((x) => !isC(x))
     if (un.length === 1) issues.push({ level: 'info', msg: i18n.m(`${name}: perna ${un[0]} sem ligação.`, `${name}: leg ${un[0]} not connected.`), parts: [part.id] })
     const v = vd('K', 'A')
-    const i = v > 5.1 ? (v - 5.1) / 7 : v < -0.7 ? (-v - 0.7) / 0.5 : 0
+    const i = v > VK ? (v - VK) / RZ : v < -0.7 ? (-v - 0.7) / 0.5 : 0
     if (i * Math.abs(v) > 1) issues.push({ level: 'error', msg: i18n.m(`${name}: ~${(i * Math.abs(v)).toFixed(1)} W (máx. 1 W) — falta a resistência em série?`, `${name}: ~${(i * Math.abs(v)).toFixed(1)} W (max 1 W) — missing the series resistor?`), parts: [part.id] })
   },
 }

@@ -29,6 +29,11 @@ function collectTypes(s) {
   const ints = new Set()
   const floats = new Set()
   const intFns = new Set()
+  const reals = new Set() // float / double (só estes; `floats` inclui String, ponteiros…)
+  const realFns = new Set()
+  const narrow = new Set() // inteiros que truncam (bool e char ficam de fora)
+  const bools = new Set()
+  const kinds = new Map() // nome → classes de tipo com que foi declarado (o mesmo nome noutro sítio conta)
   TYPE_RE.lastIndex = 0
   let m
   while ((m = TYPE_RE.exec(s))) {
@@ -44,8 +49,15 @@ function collectTypes(s) {
       if (s[i] === '(') {
         // função: o tipo é o do valor devolvido
         if (INT_T.test(t)) intFns.add(name)
+        else if (FLOAT_T.test(t)) realFns.add(name)
         break
       }
+      const kind = /^(?:bool|boolean)$/.test(t) ? 'bool' : /\bchar\b/.test(t) ? 'char' : INT_T.test(t) ? 'int' : FLOAT_T.test(t) ? 'real' : 'other'
+      if (!kinds.has(name)) kinds.set(name, new Set())
+      kinds.get(name).add(kind)
+      if (FLOAT_T.test(t)) reals.add(name)
+      if (INT_T.test(t) && !/\b(?:bool|boolean|char)\b/.test(t)) narrow.add(name)
+      if (/^(?:bool|boolean)$/.test(t)) bools.add(name)
       if (INT_T.test(t)) ints.add(name)
       else if (FLOAT_T.test(t)) floats.add(name)
       else floats.add(name) // String, void*… (não é inteiro)
@@ -73,8 +85,13 @@ function collectTypes(s) {
     if (/^\(?-?(?:0x[0-9a-fA-F]+|\d+)(?:UL|ul|L|l|U|u)?\)?$/.test(v)) ints.add(d[1])
     else floats.add(d[1])
   }
+  for (const n of [...reals]) if (ints.has(n)) reals.delete(n)
   for (const n of ints) if (floats.has(n)) ints.delete(n) // declarado das duas maneiras: na dúvida, não
-  return { ints, intFns }
+  for (const n of [...narrow]) if (!ints.has(n)) narrow.delete(n)
+  for (const n of [...bools]) if (!ints.has(n)) bools.delete(n)
+  // só nomes declarados de UMA maneira (um `b` que é bool numa função e long noutra fica de fora)
+  for (const set of [bools, narrow, reals]) for (const n of [...set]) if (kinds.get(n)?.size !== 1) set.delete(n)
+  return { ints, intFns, reals, realFns, narrow, bools }
 }
 
 function skipString(s, i) {
@@ -251,6 +268,107 @@ function rightOperand(s, i) {
     break
   }
   return start === k ? -1 : k
+}
+
+// ---------- casas decimais guardadas num inteiro ----------
+// Em C++ `int x = 3.7;` e `x = f * 2.5;` (x inteiro) TRUNCAM (x = 3); em JavaScript a variável
+// ficava com as casas decimais. Aqui, quando o valor é de certeza com casas decimais (um literal
+// 2.5, uma variável float/double, sqrt/sin/…, uma função float do sketch), a declaração ou a
+// atribuição passa a `x = __toInt(…)`. Conservador como a divisão inteira: na dúvida fica como estava.
+const REAL_FUNCS = new Set(['sqrt', 'sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'atan2', 'pow', 'exp', 'log', 'log10', 'fabs', 'fmod', 'hypot', 'radians', 'degrees', 'toFloat', 'toDouble', 'parseFloat', 'sq'])
+const NARROW_DECL = /(?<=(^|[;{}(])\s*)((?:(?:const|static|volatile)\s+)*(?:unsigned\s+long\s+long|unsigned\s+long|unsigned\s+int|unsigned\s+short|long\s+long|long\s+int|short\s+int|unsigned|int|long|short|byte|word|size_t|u?int(?:8|16|32|64)_t)\s+)([A-Za-z_]\w*\s*=(?!=)[^;{}]*);/gm
+
+function isRealExpr(txt, T) {
+  const t = txt.trim()
+  if (!t || /["']/.test(t) || t.startsWith('__toInt(')) return false
+  if (isIntExpr(t, T)) return false
+  if (/[<>?]|==|!=|&&|\|\|/.test(t)) return false // comparações e ?: (0/1, ou um dos ramos)
+  if (CASTS_INT.test(t) && /^\(\s*[\w\s]+\)\s*(?:\w+|\([^()]*\))\s*$/.test(t)) return false // (int)x, (int)(…)
+  if (/(?<![\w.])(?:\d+\.\d*|\.\d+|\d+[eE][+-]?\d+)/.test(t)) return true
+  for (const m of t.matchAll(/(?<![\w.])([A-Za-z_]\w*)\s*(\()?/g)) {
+    if (m[2] ? REAL_FUNCS.has(m[1]) || T.realFns.has(m[1]) : T.reals.has(m[1])) return true
+  }
+  return /\.\s*(?:toFloat|toDouble|parseFloat)\s*\(/.test(t)
+}
+const parensOk = (e) => {
+  let d = 0
+  for (const c of e) {
+    if (c === '(' || c === '[') d++
+    else if ((c === ')' || c === ']') && --d < 0) return false
+  }
+  return d === 0
+}
+// separa "a = 1, b = f(x, y)" pelas vírgulas do nível de cima
+function splitTop(list) {
+  const out = []
+  let d = 0
+  let cur = ''
+  for (const c of list) {
+    if (c === '(' || c === '[' || c === '{') d++
+    else if (c === ')' || c === ']' || c === '}') d--
+    if (c === ',' && d === 0) {
+      out.push(cur)
+      cur = ''
+    } else cur += c
+  }
+  out.push(cur)
+  return out
+}
+
+export function floatNarrowing(src) {
+  const T = collectTypes(src)
+  // declarações: int x = 3.7;   long a = 1, b = f * 2.0;
+  let s = src.replace(NARROW_DECL, (all, pre, type, list) => {
+    if (/["']/.test(list) || !parensOk(list)) return all
+    let changed = false
+    const parts = splitTop(list).map((d) => {
+      const m = d.match(/^(\s*[A-Za-z_]\w*\s*=(?!=)\s*)([\s\S]+)$/)
+      if (!m || !isRealExpr(m[2], T)) return d
+      changed = true
+      return `${m[1]}__toInt(${m[2].trim()})`
+    })
+    return changed ? `${type}${parts.join(',')};` : all
+  })
+  // atribuições: x = 2.5;   x += f;   (x declarado com um tipo inteiro, e só assim)
+  if (T.narrow.size) {
+    const names = [...T.narrow].join('|')
+    s = s.replace(new RegExp(`(?<=(^|[;{})]|\\belse\\s)\\s*)(${names})\\s*(=|\\+=|-=|\\*=)(?!=)\\s*([^;{}]+);`, 'gm'), (all, pre, name, op, expr) => {
+      if (!parensOk(expr) || splitTop(expr).length > 1 || !isRealExpr(expr, T)) return all
+      const e = expr.trim()
+      return op === '=' ? `${name} = __toInt(${e});` : `${name} = __toInt(${name} ${op[0]} (${e}));`
+    })
+  }
+  // bool b = 12;  b = x * 2.5;  → true/false (em C++ qualquer valor diferente de 0 é true)
+  const toBool = (e) => {
+    const t = e.trim()
+    if (/^(?:true|false|0|1|HIGH|LOW)$/.test(t) || /["']/.test(t) || t.startsWith('!') || /[<>]|==|!=|&&|\|\|/.test(t) || !parensOk(t)) return null
+    if (/[A-Za-z_]\w*\s*\(/.test(t)) return null // funções: digitalRead(), sensor.begin()… ficam como estão
+    return isRealExpr(t, T) || isIntExpr(t, T) ? `!!(${t})` : null
+  }
+  s = s.replace(/(?<=(^|[;{}(])\s*)((?:(?:const|static|volatile)\s+)*(?:bool|boolean)\s+)([A-Za-z_]\w*)(\s*=(?!=)\s*)([^;,{}]+)(?=[;,])/gm, (all, pre, type, name, eq, expr) => {
+    const b = toBool(expr)
+    return b ? `${type}${name}${eq}${b}` : all
+  })
+  if (T.bools.size) {
+    s = s.replace(new RegExp(`(?<=(^|[;{})]|\\belse\\s)\\s*)(${[...T.bools].join('|')})(\\s*=(?!=)\\s*)([^;,{}]+)(?=;)`, 'gm'), (all, pre, name, eq, expr) => {
+      const b = toBool(expr)
+      return b ? `${name}${eq}${b}` : all
+    })
+  }
+  return s
+}
+
+// Serial.print(x, 2): com um inteiro é BIN; com um float/double são 2 casas decimais. Em JS um
+// float com valor inteiro (30.0) não se distingue de um int, por isso o tradutor marca a chamada
+// quando o argumento é de certeza float (3.º argumento, lido pelo fmt do motor).
+export function printFloatBase(src) {
+  if (!/\.print(?:ln)?\s*\(/.test(src)) return src
+  const T = collectTypes(src)
+  const real = (e) => parensOk(e) && splitTop(e).length === 1 && isRealExpr(e, T)
+  return src
+    .replace(/\.(print|println)\s*\(([^;{}]*?),\s*2\s*\)(?=\s*;)/g, (all, fn, expr) => (real(expr) ? `.${fn}(${expr}, 2, 1)` : all))
+    // Serial.print(t) com t float: sempre 2 casas decimais (30.0 → "30.00"), como no Arduino
+    .replace(/\b(Serial\d?)\.(print|println)\s*\(([^;{}]+)\)(?=\s*;)/g, (all, obj, fn, expr) => (!/, 2, 1$/.test(expr) && real(expr) ? `${obj}.${fn}(${expr}, 2, 1)` : all))
 }
 
 export function intDivision(src) {

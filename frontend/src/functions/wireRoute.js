@@ -441,7 +441,7 @@ function insidePlate(pl, p, m = 0.4) {
   return p.x > pl.x[0] - m && p.x < pl.x[1] + m && p.z > pl.z[0] - m && p.z < pl.z[1] + m
 }
 // devolve os pontos (no referencial do contentor) para atravessar a placa, ou null
-function plateCrossing(plates, A, B, seed, obs = []) {
+function plateCrossing(plates, A, B, seed, obs = [], lanes = null) {
   for (const pl of plates) {
     const a = A.clone().applyMatrix4(pl.toLocal)
     const b = B.clone().applyMatrix4(pl.toLocal)
@@ -479,13 +479,35 @@ function plateCrossing(plates, A, B, seed, obs = []) {
       const cost = 2 * Math.hypot(c.x - lo.x, c.z - lo.z) + Math.hypot(c.x - hi.x, c.z - hi.z) + (c.hole ? 0 : 0.6)
       if (!best || cost < best.cost) best = { ...c, cost }
     }
-    // pequeno desvio dentro do furo para os fios não se sobreporem
-    const ang = seed * 2.399
-    const rr = best.hole ? 0.22 * ((seed % 3) / 2) : 0.12 * (seed % 3)
-    const x = best.x + Math.cos(ang) * rr
-    const z = best.z + Math.sin(ang) * rr
     const y0 = pl.y[0]
     const y1 = pl.y[1]
+    // sítio dentro do furo (ou junto à borda) livre dos fios que já passam ali: os fios ficam
+    // lado a lado em vez de sobrepostos na mesma coluna
+    const _q = new THREE.Vector3()
+    const clear = (x, z) => !lanes?.n || [y0 - 0.55, y0 - 0.15, y1 + 0.15, y1 + 0.55].every((y) => !lanes.nearest(_q.set(x, y, z).applyMatrix4(pl.toParent)))
+    let x = best.x
+    let z = best.z
+    if (lanes?.n) {
+      const ang0 = seed * 2.399
+      let found = false
+      for (const rr of best.hole ? [0, 0.12, 0.22, 0.3] : [0, 0.16, 0.32, 0.48, 0.64, 0.8]) {
+        for (let k = 0; k < (rr ? 10 : 1) && !found; k++) {
+          const ang = ang0 + (k * Math.PI * 2) / 10
+          const cx = best.x + Math.cos(ang) * rr
+          const cz = best.z + Math.sin(ang) * rr
+          // pela borda: nunca por cima da placa
+          if (!best.hole && cx > pl.x[0] && cx < pl.x[1] && cz > pl.z[0] && cz < pl.z[1]) continue
+          if (clear(cx, cz)) [x, z, found] = [cx, cz, true]
+        }
+        if (found) break
+      }
+    } else {
+      // pequeno desvio dentro do furo para os fios não se sobreporem
+      const ang = seed * 2.399
+      const rr = best.hole ? 0.22 * ((seed % 3) / 2) : 0.12 * (seed % 3)
+      x += Math.cos(ang) * rr
+      z += Math.sin(ang) * rr
+    }
     const pts = [
       new THREE.Vector3(x, y0 - 0.55, z),
       new THREE.Vector3(x, y0 - 0.15, z),
@@ -590,10 +612,257 @@ function edgeExits(o, q) {
   return out
 }
 
+// ---------- fio confinado: as duas pontas dentro do mesmo objeto (ou de dois encostados) ----------
+// Ex.: Nano e servos dentro do corpo do Otto, sensor na cabeça encostada ao corpo. O fio real
+// fica lá dentro (não sai pela parede para voltar a entrar).
+// ponto p levado para dentro da caixa o, com folga r às faces (Vector3 novo)
+function clampIn(o, p, r) {
+  const d = [p.x - o.c[0], p.y - o.c[1], p.z - o.c[2]]
+  const q = new THREE.Vector3(...o.c)
+  for (let k = 0; k < 3; k++) {
+    const m = Math.max(0, o.h[k] - r)
+    const l = Math.max(-m, Math.min(m, dot3(d, o.u[k])))
+    q.x += o.u[k][0] * l
+    q.y += o.u[k][1] * l
+    q.z += o.u[k][2] * l
+  }
+  return q
+}
+const touch = (a, b, g = 0.15) => [0, 1, 2].every((i) => a.lo[i] <= b.hi[i] + g && b.lo[i] <= a.hi[i] + g)
+// caixas onde o fio tem de ficar (ou null): as da peça que tem as duas pontas, ou as duas peças
+// encostadas onde está cada ponta. As peças a que o fio liga não contam (ficha dentro do próprio corpo).
+function confinement(obs, a, b, own) {
+  const at = (e) => obs.filter((o) => !own.has(o.pid) && (inside(o, e.out) || inside(o, e.start)))
+  const A = at(a)
+  const B = at(b)
+  if (!A.length || !B.length) return null
+  const shared = new Set(A.map((o) => o.pid).filter((pid) => B.some((o) => o.pid === pid)))
+  if (shared.size) return obs.filter((o) => shared.has(o.pid))
+  for (const oa of A) for (const ob of B) if (touch(oa, ob)) return [oa, ob]
+  return null
+}
+const CONF_R = WIRE_R + 0.05
+const inConf = (box, p) => box.some((o) => depthIn(o, p, -CONF_R) > 0)
+function confinePt(box, p) {
+  if (inConf(box, p)) return p
+  let best = null
+  for (const o of box) {
+    const q = clampIn(o, p, CONF_R)
+    if (!best || q.distanceToSquared(p) < best.distanceToSquared(p)) best = q
+  }
+  return best
+}
+
+// ponto confinado que ficou dentro de outra peça (lá dentro também há peças: Nano, pilhas): sai
+// dela pela face que fica livre e ainda dentro do objeto, a mais perto
+function freeInConf(box, live, p) {
+  const R = WIRE_R + 0.06
+  for (let it = 0; it < 4; it++) {
+    const o = live.find((q) => depthIn(q, p, R - 0.01) > 0)
+    if (!o) return p
+    const d = [p.x - o.c[0], p.y - o.c[1], p.z - o.c[2]]
+    let best = null
+    for (let k = 0; k < 3; k++) {
+      const l = dot3(d, o.u[k])
+      for (const sg of [1, -1]) {
+        const dist = o.h[k] + R - sg * l
+        const q = confinePt(box, new THREE.Vector3(p.x + o.u[k][0] * sg * dist, p.y + o.u[k][1] * sg * dist, p.z + o.u[k][2] * sg * dist))
+        const pen = live.reduce((m, x) => Math.max(m, depthIn(x, q, R - 0.01)), 0)
+        const cost = pen * 100 + q.distanceTo(p)
+        if (!best || cost < best.cost) best = { q, cost }
+      }
+    }
+    if (best.q.distanceToSquared(p) < 1e-8) return p
+    p = best.q
+  }
+  return p
+}
+
+// percurso dentro do objeto: A* numa grelha (células de ~2,5 mm) que só tem as células dentro
+// do objeto e fora das peças que lá estão; depois estica-se (corta os cantos onde a reta está
+// livre). → pontos entre P e Q (sem eles) ou null
+function confinedPath(box, live, P, Q) {
+  const lo = [Infinity, Infinity, Infinity]
+  const hi = [-Infinity, -Infinity, -Infinity]
+  for (const o of box) for (let i = 0; i < 3; i++) (lo[i] = Math.min(lo[i], o.lo[i])), (hi[i] = Math.max(hi[i], o.hi[i]))
+  const s = Math.max(0.25, Math.max(...hi.map((v, i) => v - lo[i])) / 48)
+  const n = hi.map((v, i) => Math.max(1, Math.ceil((v - lo[i]) / s)))
+  const R = WIRE_R + 0.04
+  const near = live.filter((o) => [0, 1, 2].every((i) => o.hi[i] > lo[i] - 1 && o.lo[i] < hi[i] + 1))
+  const ptOf = (ix, iy, iz) => new THREE.Vector3(lo[0] + (ix + 0.5) * s, lo[1] + (iy + 0.5) * s, lo[2] + (iz + 0.5) * s)
+  const freeP = (p) => inConf(box, p) && !near.some((o) => depthIn(o, p, R) > 0)
+  const N = n[0] * n[1] * n[2]
+  if (N > 250000) return null
+  const state = new Int8Array(N) // 0 por ver, 1 livre, 2 ocupada
+  const idx = (ix, iy, iz) => (ix * n[1] + iy) * n[2] + iz
+  const isFree = (ix, iy, iz) => {
+    if (ix < 0 || iy < 0 || iz < 0 || ix >= n[0] || iy >= n[1] || iz >= n[2]) return false
+    const k = idx(ix, iy, iz)
+    if (!state[k]) state[k] = freeP(ptOf(ix, iy, iz)) ? 1 : 2
+    return state[k] === 1
+  }
+  const cellOf = (p) => [0, 1, 2].map((i) => Math.max(0, Math.min(n[i] - 1, Math.floor(((i === 0 ? p.x : i === 1 ? p.y : p.z) - lo[i]) / s))))
+  // célula livre mais perto do ponto (a ponta pode estar encostada a uma peça)
+  const snap = (p) => {
+    const c = cellOf(p)
+    let best = null
+    for (let r = 0; r <= 6 && !best; r++)
+      for (let i = -r; i <= r; i++) for (let j = -r; j <= r; j++) for (let k = -r; k <= r; k++) {
+        if (Math.max(Math.abs(i), Math.abs(j), Math.abs(k)) !== r || !isFree(c[0] + i, c[1] + j, c[2] + k)) continue
+        const q = [c[0] + i, c[1] + j, c[2] + k]
+        const d = ptOf(...q).distanceToSquared(p)
+        if (!best || d < best.d) best = { q, d }
+      }
+    return best?.q
+  }
+  const c0 = snap(P)
+  const c1 = snap(Q)
+  if (!c0 || !c1) return null
+  const goal = idx(...c1)
+  const g = new Float32Array(N).fill(Infinity)
+  const from = new Int32Array(N).fill(-1)
+  const h = (ix, iy, iz) => Math.hypot(ix - c1[0], iy - c1[1], iz - c1[2])
+  // fila de prioridade (montão binário)
+  const heap = []
+  const push = (k, f) => {
+    heap.push([f, k])
+    let i = heap.length - 1
+    while (i > 0) {
+      const p = (i - 1) >> 1
+      if (heap[p][0] <= heap[i][0]) break
+      ;[heap[p], heap[i]] = [heap[i], heap[p]]
+      i = p
+    }
+  }
+  const pop = () => {
+    const top = heap[0]
+    const last = heap.pop()
+    if (heap.length) {
+      heap[0] = last
+      let i = 0
+      for (;;) {
+        const l = 2 * i + 1
+        const r = l + 1
+        let m = i
+        if (l < heap.length && heap[l][0] < heap[m][0]) m = l
+        if (r < heap.length && heap[r][0] < heap[m][0]) m = r
+        if (m === i) break
+        ;[heap[m], heap[i]] = [heap[i], heap[m]]
+        i = m
+      }
+    }
+    return top
+  }
+  const k0 = idx(...c0)
+  g[k0] = 0
+  push(k0, h(...c0))
+  let steps = 0
+  while (heap.length && steps++ < 200000) {
+    const [, k] = pop()
+    if (k === goal) break
+    const iz = k % n[2]
+    const iy = ((k - iz) / n[2]) % n[1]
+    const ix = (k - iz - iy * n[2]) / (n[1] * n[2])
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+      if (!dx && !dy && !dz) continue
+      const x = ix + dx
+      const y = iy + dy
+      const z = iz + dz
+      if (!isFree(x, y, z)) continue
+      const kk = idx(x, y, z)
+      const ng = g[k] + Math.hypot(dx, dy, dz)
+      if (ng >= g[kk]) continue
+      g[kk] = ng
+      from[kk] = k
+      push(kk, ng + h(x, y, z))
+    }
+  }
+  if (from[goal] < 0 && goal !== k0) return null
+  const cells = []
+  for (let k = goal; k >= 0; k = from[k]) {
+    const iz = k % n[2]
+    const iy = ((k - iz) / n[2]) % n[1]
+    const ix = (k - iz - iy * n[2]) / (n[1] * n[2])
+    cells.push(ptOf(ix, iy, iz))
+    if (k === k0) break
+  }
+  cells.reverse()
+  // esticar: de cada ponto, salta para o mais longe que se vê em linha reta (troço livre)
+  const seen = (A, B) => {
+    const L = A.distanceTo(B)
+    const m = Math.max(1, Math.ceil(L / (s * 0.5)))
+    const t = new THREE.Vector3()
+    for (let i = 1; i < m; i++) if (!freeP(t.copy(A).lerp(B, i / m))) return false
+    return true
+  }
+  const chain = [P, ...cells, Q]
+  const out = []
+  let i = 0
+  while (i < chain.length - 1) {
+    let j = chain.length - 1
+    while (j > i + 1 && !seen(chain[i], chain[j])) j--
+    if (j < chain.length - 1) out.push(chain[j])
+    i = j
+  }
+  // pontos a cada ~1 cm (o alisamento precisa deles para curvar nos cantos)
+  const full = [P, ...out, Q]
+  const res = []
+  for (let k = 1; k < full.length; k++) {
+    const L = full[k - 1].distanceTo(full[k])
+    const m = Math.max(1, Math.round(L / 0.8))
+    for (let u = 1; u <= m; u++) if (k < full.length - 1 || u < m) res.push(full[k - 1].clone().lerp(full[k], u / m))
+  }
+  return res
+}
+
+// ---------- rigidez do jumper ----------
+// Um jumper (fio de 24–26 AWG com isolamento de PVC) não faz zigue-zagues nem dobras vivas: curva
+// com raio de ~4 mm no mínimo e, entre apoios, fica em arcos suaves. Alisa os pontos de controlo
+// (cada um vai para o meio dos vizinhos) sem entrar em peças nem sair do objeto onde está
+// confinado; as fichas e o primeiro troço junto a elas ficam como estão (saem a direito do pino).
+const BEND_R = 0.4 // cm
+function stiffen(points, live, lockA, lockB, box, lanes = null, iters = 8) {
+  let P = points.map((p) => p.clone())
+  const R = WIRE_R + 0.03
+  // (nem encostar a um fio já traçado: onde estava afastado dele, continua)
+  const near = (p) => (lanes?.n ? lanes.nearest(p)?.d ?? Infinity : Infinity)
+  const free = (p, p0) => (!box || inConf(box, p)) && !live.some((o) => depthIn(o, p, R) > 0.005) && (!p0 || near(p) >= Math.min(LANE_GAP - 0.01, near(p0)))
+  const _m = new THREE.Vector3()
+  for (let it = 0; it < iters; it++) {
+    let moved = false
+    for (let i = lockA; i < P.length - lockB; i++) {
+      const prev = P[i - 1]
+      const next = P[i + 1]
+      const p = P[i]
+      // curvatura neste ponto: raio do círculo pelos três pontos
+      const a = p.distanceTo(prev)
+      const c = p.distanceTo(next)
+      const bLen = prev.distanceTo(next)
+      const area2 = _m.subVectors(p, prev).cross(new THREE.Vector3().subVectors(next, prev)).length()
+      const rad = area2 > 1e-9 ? (a * c * bLen) / (2 * area2) : Infinity
+      const w = rad < BEND_R * 3 ? 0.5 : 0.25
+      const target = prev.clone().add(next).multiplyScalar(0.5)
+      const q = p.clone().lerp(target, w)
+      if (q.distanceToSquared(p) < 1e-6) continue
+      // o ponto novo e os troços até aos vizinhos não podem entrar em peças
+      const ok = free(q, p) && free(_m.copy(q).lerp(prev, 0.5)) && free(_m.copy(q).lerp(next, 0.5))
+      if (!ok) continue
+      P[i] = q
+      moved = true
+    }
+    if (!moved) break
+  }
+  // pontos quase seguidos (sobram do alisamento): fora
+  const out = [P[0]]
+  for (let i = 1; i < P.length; i++) if (i >= P.length - lockB || i < lockA || P[i].distanceTo(out[out.length - 1]) > 0.12) out.push(P[i])
+  return out
+}
+
 const MARGIN = 25 // cm à volta das pontas onde se procuram obstáculos
 let GROUND = 0 // tampo da mesa no referencial dos fios (-Infinity dentro de um robô)
 
-export function routeWire(endA, endB, { obstacles = [], plates = [], seed = 0, via = null, fast = false, ground = 0 } = {}) {
+// lanes: fios já traçados (Lanes) dos quais este se afasta
+export function routeWire(endA, endB, { obstacles = [], plates = [], seed = 0, via = null, fast = false, ground = 0, lanes = null } = {}) {
   GROUND = ground ?? -Infinity
   const lead = (e) => {
     const k = PLUG[e.conn] || PLUG.male
@@ -651,8 +920,11 @@ export function routeWire(endA, endB, { obstacles = [], plates = [], seed = 0, v
       return q
     })
   }
-  const cross = vias ? null : plateCrossing(plates, a.start, b.start, seed, live)
-  if (!cross) {
+  // pontas dentro do mesmo objeto (ou de dois encostados): o fio fica lá dentro (sem sair
+  // por baixo da tampa nem atravessar placas)
+  const box = !via?.length ? confinement(obs, a, b, new Set([endA.part, endB.part].filter(Boolean))) : null
+  const cross = vias || box ? null : plateCrossing(plates, a.start, b.start, seed, live, fast ? null : lanes)
+  if (!cross && !box) {
     const ea = escapeUnder(a.start, vias?.[0] || b.start, live)
     const eb = escapeUnder(b.start, vias?.[vias.length - 1] || a.start, live)
     if (ea) [a.esc, a.start] = [a.start, ea]
@@ -675,18 +947,79 @@ export function routeWire(endA, endB, { obstacles = [], plates = [], seed = 0, v
     const highPart = arc(via[3], high.start, live, seed, null, high === a ? skipA : skipB, { fast })
     const seq = [low.start, ...lowPart, ...via, ...highPart, high.start]
     mid = cross.lowIsA ? seq : seq.reverse()
-  } else mid = [a.start, ...arc(a.start, b.start, live, seed, skipA, skipB, { fast }), b.start]
+  } else {
+    // fio "irmão" de um já traçado (pontas vizinhas às dele nos dois lados: pinos seguidos
+    // de um conector para pinos seguidos de outro): segue o mesmo percurso, ao lado, como uma
+    // fita; se a ordem dos pinos troca entre as pontas, a fita levanta no meio (passa por cima)
+    // (não quando uma ponta está dentro de uma peça oca: corpo de robô, cabeça do Otto)
+    let bro = !fast && lanes && !ign.size ? bundleWith(lanes, a.start, b.start) : null
+    // a fita (percurso do irmão deslocado) não pode encostar a peças: senão, percurso próprio
+    if (bro) {
+      const R = WIRE_R + 0.06
+      const _m = new THREE.Vector3()
+      const hit = bro.some((q, i) => [q, ...(bro[i + 1] ? [_m.copy(q).lerp(bro[i + 1], 0.5)] : [])].some((pt) => live.some((o) => depthIn(o, pt, R) > 0.005)))
+      if (hit) bro = null
+    }
+    if (bro) bro.bro = true
+    // dentro de um objeto: percurso lá dentro (à volta das peças que lá estão)
+    const inner = box && !bro ? confinedPath(box, live, a.start, b.start) : null
+    mid = bro || (inner ? [a.start, ...inner, b.start] : [a.start, ...arc(a.start, b.start, live, seed, skipA, skipB, { fast }), b.start])
+  }
   // a.start/b.start já estão em mid
   const headA = [a.tip, a.out, ...(a.rise ? [a.rise] : []), ...(a.esc ? [a.esc] : [])]
   const headB = [...(b.esc ? [b.esc] : []), ...(b.rise ? [b.rise] : []), b.out, b.tip]
-  const points = [...headA, ...mid, ...headB]
-  // remove pontos quase coincidentes (a CatmullRom não gosta)
-  let clean = [points[0]]
-  for (let i = 1; i < points.length; i++) if (points[i].distanceTo(clean[clean.length - 1]) > 0.03) clean.push(points[i])
-  if (clean.length < 2) clean.push(points[points.length - 1].clone().add(new THREE.Vector3(0, 0.01, 0)))
-  // a curva final não pode cortar peças (cantos, descaída entre pontos de controlo)
-  if (clean.length > 3) clean = repair(clean, live, new Set(), 1, 1, fast ? 1 : 3, fast)
-  return { points: clean, ends: [a, b], via: cross?.via, vias, moved }
+  const build = (mid) => {
+    const points = [...headA, ...mid, ...headB]
+    // remove pontos quase coincidentes (a CatmullRom não gosta)
+    let clean = [points[0]]
+    for (let i = 1; i < points.length; i++) if (points[i].distanceTo(clean[clean.length - 1]) > 0.03) clean.push(points[i])
+    if (clean.length < 2) clean.push(points[points.length - 1].clone().add(new THREE.Vector3(0, 0.01, 0)))
+    // a curva final não pode cortar peças (cantos, descaída entre pontos de controlo)
+    if (clean.length > 3) clean = repair(clean, live, new Set(), 1, 1, fast ? 1 : 3, fast)
+    // fios já traçados: afasta-se deles (por cima), e volta a confirmar que não entra em peças
+    if (lanes?.n && !fast && clean.length > 3) {
+      // até 4 rondas: a curva final (CatmullRom pelos pontos de controlo) ainda pode encostar
+      let sep = clean
+      for (let k = 0; k < 4; k++) {
+        const nx = separate(sep, lanes)
+        if (nx === sep) break
+        sep = nx
+      }
+      if (sep !== clean) {
+        const rp = repair(sep, live, new Set(), 1, 1, 2, false)
+        // não aceita afastar-se de outro fio à custa de entrar numa peça (também nas peças ocas
+        // onde está a ponta, que o percurso ignora)
+        if (noWorse(penetration(rp, obs, [a, b]), penetration(clean, obs, [a, b]))) clean = rp
+      }
+    }
+    return clean
+  }
+  let clean = build(mid)
+  // a fita raspou numa peça: percurso próprio
+  if (mid.bro && penetration(clean, obs, [a, b]).size) {
+    mid = [a.start, ...arc(a.start, b.start, live, seed, skipA, skipB, { fast }), b.start]
+    clean = build(mid)
+  }
+  // pontas dentro do mesmo objeto (ou de dois encostados): o fio fica lá dentro
+  const lockA = Math.min(clean.length - 1, headA.length)
+  const lockB = Math.min(clean.length - 1, headB.length)
+  if (box) {
+    clean = clean.map((p, i) => (i < lockA || i >= clean.length - lockB ? p : freeInConf(box, live, confinePt(box, p))))
+    // entre pontos de controlo mais afastados, um a meio (a curva não corta o canto por fora)
+    const dense = [clean[0]]
+    for (let i = 1; i < clean.length; i++) {
+      if (i >= lockA && i < clean.length - lockB + 1 && clean[i].distanceTo(clean[i - 1]) > 1) dense.push(freeInConf(box, live, confinePt(box, clean[i - 1].clone().lerp(clean[i], 0.5))))
+      dense.push(clean[i])
+    }
+    clean = dense
+  }
+  // rigidez do jumper: sem dobras vivas nem zigue-zagues
+  if (!fast && !vias && clean.length > lockA + lockB + 1) {
+    const st = stiffen(clean, live, lockA, lockB, box, lanes)
+    // (a curva final pelos pontos alisados não pode raspar mais nas peças do que a de antes)
+    if (noWorse(penetration(st, obs, [a, b]), penetration(clean, obs, [a, b]))) clean = st
+  }
+  return { points: clean, ends: [a, b], via: cross?.via, vias, moved, mid: !vias && !cross ? mid : null }
 }
 
 // quanto o fio entra nas caixas (para testes): troços amostrados com o centro do fio dentro de
@@ -710,6 +1043,231 @@ export function wireHits(points, obstacles, ends) {
     }
   }
   return hits
+}
+
+// ---------- fios entre si: faixas ----------
+// Cada fio traçado fica numa grelha de pontos (amostras de ~1,2 mm ao longo do eixo do fio);
+// os fios traçados depois afastam-se deles: onde se cruzariam, o fio novo passa por cima do
+// outro, encostado (como dois jumpers verdadeiros), em vez de o atravessar.
+const LANE_CELL = 0.5
+const LANE_GAP = 2 * WIRE_R + 0.03 // distância mínima entre os eixos de dois fios
+const TIP_FREE = 0.35 // junto às fichas não conta (pinos vizinhos a 2,54 mm já ficam afastados)
+// chave numérica da célula (inteiros até ±1024 células = ±5 m)
+const ckey = (ix, iy, iz) => ((ix + 1024) * 2048 + (iy + 1024)) * 2048 + (iz + 1024)
+const cellKey = (x, y, z) => ckey(Math.floor(x / LANE_CELL), Math.floor(y / LANE_CELL), Math.floor(z / LANE_CELL))
+// amostra o eixo do fio (sem os troços dentro das fichas) → { pts: [Vector3], lo, hi }
+export function sampleWire(points, ends) {
+  const curve = new THREE.CatmullRomCurve3(points, false, 'centripetal')
+  const len = curve.getLength()
+  const N = Math.max(8, Math.min(700, Math.round(len / 0.12)))
+  const tips = ends.map((e) => e.tip)
+  const pts = curve.getSpacedPoints(N).filter((p) => tips.every((t) => p.distanceTo(t) > TIP_FREE))
+  const lo = new THREE.Vector3(Infinity, Infinity, Infinity)
+  const hi = new THREE.Vector3(-Infinity, -Infinity, -Infinity)
+  for (const p of pts) lo.min(p), hi.max(p)
+  return { pts, lo, hi }
+}
+// grelha com os fios já traçados (só os que podem tocar no novo: caixas sobrepostas)
+export class Lanes {
+  constructor() {
+    this.grid = new Map()
+    this.n = 0
+  }
+  // rt: percurso (routeWire) do fio, para os irmãos o seguirem em fita
+  add(sample, rt = null) {
+    if (rt?.mid) (this.wires ||= []).push({ a: rt.mid[0], b: rt.mid[rt.mid.length - 1], mid: rt.mid })
+    for (const p of sample.pts) {
+      const k = cellKey(p.x, p.y, p.z)
+      let l = this.grid.get(k)
+      if (!l) this.grid.set(k, (l = []))
+      l.push(p)
+    }
+    this.n++
+    return this
+  }
+  // repulsão dos fios encostados a p: soma de (p − q)·(LANE_GAP − d) dos pontos a menos de
+  // LANE_GAP (num feixe empurra para o lado livre, não para cima do vizinho) → { v, d } ou null
+  push(p, out) {
+    const cx = Math.floor(p.x / LANE_CELL)
+    const cy = Math.floor(p.y / LANE_CELL)
+    const cz = Math.floor(p.z / LANE_CELL)
+    out.set(0, 0, 0)
+    let dmin = LANE_GAP
+    let any = false
+    for (let i = -1; i <= 1; i++)
+      for (let j = -1; j <= 1; j++)
+        for (let k = -1; k <= 1; k++) {
+          const l = this.grid.get(ckey(cx + i, cy + j, cz + k))
+          if (!l) continue
+          for (const q of l) {
+            const d = q.distanceTo(p)
+            if (d >= LANE_GAP) continue
+            any = true
+            if (d < dmin) dmin = d
+            if (d > 1e-6) out.x += ((p.x - q.x) / d) * (LANE_GAP - d), out.y += ((p.y - q.y) / d) * (LANE_GAP - d), out.z += ((p.z - q.z) / d) * (LANE_GAP - d)
+          }
+        }
+    return any ? dmin : null
+  }
+  // ponto de outro fio mais perto de p (até LANE_GAP), ou null
+  nearest(p) {
+    const cx = Math.floor(p.x / LANE_CELL)
+    const cy = Math.floor(p.y / LANE_CELL)
+    const cz = Math.floor(p.z / LANE_CELL)
+    let best = null
+    let bd = LANE_GAP
+    for (let i = -1; i <= 1; i++)
+      for (let j = -1; j <= 1; j++)
+        for (let k = -1; k <= 1; k++) {
+          const l = this.grid.get(ckey(cx + i, cy + j, cz + k))
+          if (!l) continue
+          for (const q of l) {
+            const d = q.distanceTo(p)
+            if (d < bd) [bd, best] = [d, q]
+          }
+        }
+    return best ? { q: best, d: bd } : null
+  }
+}
+// quanto a curva entra em cada peça (maior profundidade por caixa: Map), sem contar as
+// fichas junto aos pinos
+function penetration(points, obs, ends) {
+  const curve = new THREE.CatmullRomCurve3(points, false, 'centripetal')
+  const N = Math.max(16, Math.min(800, Math.round(curve.getLength() * 8)))
+  const worst = new Map()
+  const p = new THREE.Vector3()
+  for (let i = 0; i <= N; i++) {
+    curve.getPointAt(i / N, p)
+    if (ends.some((e) => p.distanceTo(e.tip) < 0.3)) continue
+    for (const o of obs) {
+      const d = depthIn(o, p, WIRE_R - 0.02)
+      if (d > 0.02 && d > (worst.get(o) || 0)) worst.set(o, d)
+    }
+  }
+  return worst
+}
+// b não entra mais do que a em nenhuma peça?
+const noWorse = (b, a) => [...b].every(([o, d]) => d <= (a.get(o) || 0) + 0.005)
+
+// percurso de um fio irmão (ver routeWire) ou null
+const BRO = 1.6 // cm: pontas a menos disto das do irmão
+function bundleWith(lanes, A, B) {
+  if (!lanes.wires?.length || A.distanceTo(B) < 2.5) return null
+  let best = null
+  for (const w of lanes.wires) {
+    for (const flip of [false, true]) {
+      const [wa, wb] = flip ? [w.b, w.a] : [w.a, w.b]
+      const d = A.distanceTo(wa) + B.distanceTo(wb)
+      if (A.distanceTo(wa) < BRO && B.distanceTo(wb) < BRO && (!best || d < best.d)) best = { d, mid: flip ? [...w.mid].reverse() : w.mid }
+    }
+  }
+  if (!best) return null
+  const M = best.mid
+  const dA = A.clone().sub(M[0])
+  const dB = B.clone().sub(M[M.length - 1])
+  // afastamento lateral ao longo do fio (interpolado entre as pontas): onde fica abaixo de
+  // LANE_GAP (ordem dos pinos trocada) a fita levanta para passar por cima
+  let minSep = Infinity
+  for (let k = 0; k <= 10; k++) {
+    const v = dA.clone().lerp(dB, k / 10)
+    minSep = Math.min(minSep, Math.hypot(v.x, v.z) + Math.abs(v.y) * 0.5)
+  }
+  const lift = minSep < LANE_GAP + 0.04 ? LANE_GAP + 0.08 : 0
+  const acc = [0]
+  for (let i = 1; i < M.length; i++) acc.push(acc[i - 1] + M[i].distanceTo(M[i - 1]))
+  const L = acc[acc.length - 1] || 1
+  return M.map((p, i) => {
+    const t = acc[i] / L
+    const q = p.clone().add(dA.clone().lerp(dB, t))
+    q.y += lift * Math.sin(Math.PI * t)
+    return q
+  })
+}
+
+// afasta o fio dos que já estão traçados. Amostra o fio, calcula em cada amostra o deslocamento
+// necessário para ficar a LANE_GAP do outro fio (de preferência para cima: passa por cima dele,
+// encostado), espalha-o ao longo do fio com rampas suaves (um troço inteiro sobe, sem bossas) e
+// repete. Junto às fichas (troço reto do pino) não mexe.
+const SPREAD = 0.9 // cm de rampa de cada lado de um contacto
+function separate(points, lanes) {
+  const n0 = points.length
+  if (n0 < 4) return points
+  const curve = new THREE.CatmullRomCurve3(points, false, 'centripetal')
+  const L = curve.getLength()
+  const N = Math.max(12, Math.min(500, Math.round(L / 0.15)))
+  const P = curve.getSpacedPoints(N)
+  const ds = L / N
+  // troços fixos: ficha + troço reto em cada ponta
+  const fa = points[0].distanceTo(points[1]) + 0.15
+  const fb = points[n0 - 1].distanceTo(points[n0 - 2]) + 0.15
+  const ramp = (i) => {
+    const s = i * ds
+    const e = Math.min(s - fa, L - fb - s)
+    return e <= 0 ? 0 : Math.min(1, e / 0.5)
+  }
+  const V = P.map(() => new THREE.Vector3())
+  const B = P.map(() => new THREE.Vector3())
+  const _v = new THREE.Vector3()
+  let moved = false
+  // só as amostras que mexeram (ou estavam encostadas) podem ter contactos novos
+  const active = new Uint8Array(N + 1).fill(1)
+  for (let it = 0; it < 12; it++) {
+    let any = false
+    for (let i = 0; i <= N; i++) {
+      V[i].set(0, 0, 0)
+      if (!active[i] || ramp(i) <= 0) continue
+      active[i] = 0
+      const dmin = lanes.push(P[i], _v)
+      if (dmin == null) continue
+      // tangente do fio aqui: só conta o afastamento perpendicular a ela (num troço vertical
+      // "para cima" não afasta nada)
+      const T = P[Math.min(N, i + 1)].clone().sub(P[Math.max(0, i - 1)]).normalize()
+      const dir = _v.clone()
+      dir.addScaledVector(T, -dir.dot(T))
+      if (dir.lengthSq() < 1e-8) dir.set(0, 1, 0).addScaledVector(T, -T.y)
+      if (dir.lengthSq() < 1e-8) dir.set(T.z, 0, -T.x)
+      dir.normalize()
+      // por cima do outro fio, se o fio não for quase vertical
+      const up = new THREE.Vector3(0, 1, 0).addScaledVector(T, -T.y)
+      if (dir.y > -0.5 && up.lengthSq() > 0.25) dir.addScaledVector(up.normalize(), 1.2).normalize()
+      V[i].copy(dir).multiplyScalar(LANE_GAP + 0.05 - dmin)
+      active[i] = 1
+      any = true
+    }
+    if (!any) break
+    moved = true
+    // espalha: em cada amostra, o maior deslocamento vizinho com queda linear em SPREAD cm
+    const W = Math.max(1, Math.round(SPREAD / ds))
+    for (let i = 0; i <= N; i++) {
+      let best = 0
+      B[i].set(0, 0, 0)
+      for (let j = Math.max(0, i - W); j <= Math.min(N, i + W); j++) {
+        const m = V[j].length()
+        if (!m) continue
+        const w = 1 - Math.abs(i - j) / (W + 1)
+        if (m * w > best) {
+          best = m * w
+          B[i].copy(V[j]).multiplyScalar(w)
+        }
+      }
+    }
+    for (let i = 0; i <= N; i++) {
+      const r = ramp(i)
+      if (r > 0 && B[i].lengthSq() > 1e-10) {
+        P[i].addScaledVector(B[i], r)
+        active[i] = 1
+      }
+    }
+  }
+  if (!moved) return points
+  // pontos de controlo: as fichas e troços retos originais + amostras de ~0,45 cm no meio
+  const step = Math.max(1, Math.round(0.3 / ds))
+  const mid = []
+  for (let i = step; i < N; i += step) {
+    const sv = i * ds
+    if (sv > fa && sv < L - fb) mid.push(P[i])
+  }
+  return [points[0], points[1], ...mid, points[n0 - 2], points[n0 - 1]]
 }
 
 // coarse: fio a mexer (menos segmentos; volta ao normal quando parar)

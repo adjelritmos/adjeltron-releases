@@ -169,7 +169,7 @@ function buildNinja() {
       const a = (i / ring.n) * 2 * Math.PI;
       add(parts, `aro${k}${i}`, "esfera", `disco${k}`, "top", X, Y, {
         alvoW: [r3(ring.R * Math.cos(a)), 0, r3(s * zc + ring.R * Math.sin(a))],
-        config: { r: ring.r, material: "borracha", color: PRETO },
+        config: { r: ring.r, material: "borracha", color: PRETO, fixa: true }, // aro de borracha colado ao disco
       });
     }
     // patins: barra por cima do bordo de dentro do disco, presa ao suporte por uma placa de trás

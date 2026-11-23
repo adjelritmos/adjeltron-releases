@@ -8,6 +8,8 @@ export default {
   type: 'ds18b20',
   stamp({ cond, s }) {
     cond('VDD', 'GND', s.damaged ? 1e-9 : 0.001 / 5)
+    // DQ é dreno aberto: sem a resistência de pull-up a linha não sobe (fuga para o GND) e o sensor não responde
+    cond('DQ', 'GND', 1e-7)
   },
   update(ctx) {
     const { vd, set, s } = ctx

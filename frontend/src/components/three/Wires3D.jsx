@@ -12,7 +12,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useStore } from '../../contexts/store.js'
 import { simRef } from '../../contexts/simRef.js'
-import { routeWire, tubeFor, PLUG, pushOut, WIRE_R } from '../../functions/wireRoute.js'
+import { routeWire, tubeFor, PLUG, pushOut, WIRE_R, Lanes, sampleWire } from '../../functions/wireRoute.js'
 import { wireContainerOf, rootsOf, buildWireEnv, wireEndOf } from '../../functions/wireEnv.js'
 
 // fios presos ao corpo de um robô que se mexe como um todo (veículos, robôs com física livre)
@@ -22,7 +22,30 @@ const objects = simRef.objects
 
 // ---------- estado partilhado ----------
 // env: obstáculos por contentor; last: pontas do último percurso de cada fio; frame: orçamento
-const route = { epoch: 0, env: new Map(), last: new Map(), frame: { t: -1, spent: 0 } }
+const route = { epoch: 0, env: new Map(), last: new Map(), frame: { t: -1, spent: 0 }, lanes: new Map(), lanesVer: 0 }
+
+// ---------- faixas: cada fio afasta-se dos fios anteriores (pela ordem da lista) ----------
+// route.lanes: contentor → Map(id do fio → { idx, ver, smp, rt }). Um fio só depende dos
+// anteriores, por isso quando um muda os seguintes que lhe tocam refazem-se uma vez (sem ciclos).
+const lanesMap = (container) => {
+  let m = route.lanes.get(container)
+  if (!m) route.lanes.set(container, (m = new Map()))
+  return m
+}
+const boxHit = (lo, hi, a, b, pad) => a.x < hi.x + pad && b.x > lo.x - pad && a.y < hi.y + pad && b.y > lo.y - pad && a.z < hi.z + pad && b.z > lo.z - pad
+// fios anteriores que podem tocar no percurso (caixa lo..hi): chave (id:versão) e as faixas
+function lanesFor(container, idx, lo, hi) {
+  const out = []
+  for (const [id, e] of lanesMap(container)) if (e.idx < idx && e.smp && boxHit(e.smp.lo, e.smp.hi, lo, hi, 1)) out.push([id, e])
+  out.sort((x, y) => x[1].idx - y[1].idx)
+  return { key: out.map(([id, e]) => `${id}:${e.ver}`).join('|'), list: out }
+}
+function boxOfPts(pts) {
+  const lo = new THREE.Vector3(Infinity, Infinity, Infinity)
+  const hi = new THREE.Vector3(-Infinity, -Infinity, -Infinity)
+  for (const p of pts) lo.min(p), hi.max(p)
+  return { lo, hi }
+}
 // ms por frame para recalcular percursos (construção / simulação); acima disto os fios a mexer
 // são esticados e os outros esperam
 const BUDGET = 7
@@ -216,7 +239,7 @@ function warp(m, S, a, b, gA, gB) {
 const moveEnd = (e, T) => ({ ...e, d: e.d.clone().applyQuaternion(T.q), tip: applyRigid(T, e.tip), base: applyRigid(T, e.base) })
 
 // ---------- um fio ----------
-function Wire3D({ wire, container }) {
+function Wire3D({ wire, container, order }) {
   const mesh = useRef()
   const endA = useRef()
   const endB = useRef()
@@ -283,6 +306,11 @@ function Wire3D({ wire, container }) {
         why = 'full'
         // o último foi o rápido (estava a mexer): o completo, uma vez
         if (fr.spent > budget) return
+      } else if (!sim && S.r && S.lv !== route.lanesVer && (S.lv = route.lanesVer) && lanesFor(container, order, ...Object.values(boxOfPts(S.r.points))).key !== S.laneKey) {
+        // um fio anterior que passa perto mudou: refaz este para continuar afastado dele
+        why = 'faixas'
+        // sem orçamento neste frame: volta a verificar no seguinte
+        if (fr.spent > budget) return void (S.lv = -1)
       } else {
         // obstáculos à volta mudaram de verdade? (na simulação no máximo 1× a cada 3 s por fio: sem saltos)
         if (S.envVer === env.ver) return
@@ -308,7 +336,25 @@ function Wire3D({ wire, container }) {
     S.envVer = env.ver
     const sig = zoneSig(env, [a.p, b.p, ...(via || [])])
     const t0 = performance.now()
-    const r = routeWire(a, b, { obstacles: env.obstacles, plates: env.plates, seed, via, fast, ground: container ? null : 0 })
+    // faixas dos fios anteriores perto deste (zona das pontas e do último percurso)
+    const zone = boxOfPts([a.p, b.p, ...(S.r?.points || []), ...(via || [])])
+    zone.lo.subScalar(3)
+    zone.hi.addScalar(3)
+    const lf = !fast && !sim ? lanesFor(container, order, zone.lo, zone.hi) : null
+    let lanes = null
+    if (lf?.list.length) {
+      lanes = new Lanes()
+      for (const [, e] of lf.list) lanes.add(e.smp, e.rt)
+    }
+    const r = routeWire(a, b, { obstacles: env.obstacles, plates: env.plates, seed, via, fast, ground: container ? null : 0, lanes })
+    // regista o percurso nas faixas (os fios seguintes afastam-se dele)
+    if (!fast) {
+      const lm = lanesMap(container)
+      const prev = lm.get(wire.id)
+      lm.set(wire.id, { idx: order, ver: (prev?.ver || 0) + 1, smp: sampleWire(r.points, r.ends), rt: r })
+      route.lanesVer++
+    }
+    S.laneKey = lf ? lanesFor(container, order, ...Object.values(boxOfPts(r.points))).key : S.laneKey
     fr.spent += performance.now() - t0
     if (import.meta.env.DEV) {
       const k = (route.stats ||= { n: 0, fast: 0, ms: 0 })
@@ -325,7 +371,13 @@ function Wire3D({ wire, container }) {
     m.geometry.dispose()
     m.geometry = tubeFor(r.points)
   })
-  useEffect(() => () => mesh.current?.geometry.dispose(), [])
+  useEffect(
+    () => () => {
+      mesh.current?.geometry.dispose()
+      if (lanesMap(container).delete(wire.id)) route.lanesVer++
+    },
+    [container, wire.id],
+  )
   return (
     <group
       userData={{ wire: true }}
@@ -423,7 +475,7 @@ function WireHandles({ wire }) {
 // (só em desenvolvimento) câmara acessível para testes automáticos (puppeteer)
 function DevHook() {
   const { camera, controls, scene } = useThree()
-  if (import.meta.env.DEV && typeof window !== 'undefined') window.__three = { camera, controls, scene, THREE, objects, route }
+  if (import.meta.env.DEV && typeof window !== 'undefined') (window.__three = { camera, controls, scene, THREE, objects, route }), (window.__wireRoute = route)
   return null
 }
 
@@ -461,8 +513,8 @@ export function Wires3D({ container = null }) {
           const c = ra.id === rb.id ? wireContainerOf(ra, parts) : null
           return c === container
         })
-        .map((w) => (
-          <Wire3D key={w.id} wire={w} container={container} />
+        .map((w, i) => (
+          <Wire3D key={w.id} wire={w} container={container} order={i} />
         ))}
     </>
   )
